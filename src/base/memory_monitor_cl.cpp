@@ -83,6 +83,12 @@ mmon_print_module_info (std::vector<MMON_MODULE_INFO> &module_info)
 
   for (const auto &m_info : module_info)
     {
+      // TODO: It's a temporary measure for hiding MMON_OTHERS
+      //       It will be deleted when all other modules in CUBRID are registered in memory_monitor.
+      if (!strcmp (m_info.name, "OTHERS"))
+	{
+	  continue;
+	}
       fprintf (stdout, "Module Name: %s\n\n", m_info.name);
       fprintf (stdout, "%-19s\t: %17lu\n", init_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (m_info.stat.init_stat));
       fprintf (stdout, "%-19s\t: %17lu\n", cur_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (m_info.stat.cur_stat));
@@ -126,9 +132,16 @@ mmon_print_module_info_summary (uint64_t server_mem_usage, std::vector<MMON_MODU
 
   for (const auto &m_info : module_info)
     {
+      // TODO: It's a temporary measure for hiding MMON_OTHERS
+      //       It will be deleted when all other modules in CUBRID are registered in memory_monitor.
+      if (!strcmp (m_info.name, "OTHERS"))
+	{
+	  continue;
+	}
       if (server_mem_usage != 0)
 	{
 	  cur_stat_ratio = m_info.stat.cur_stat / (double) server_mem_usage;
+	  cur_stat_ratio *= 100;
 	}
 
       fprintf (stdout, "\t%5d\t%-20s\t: %17lu(%3d%%)\n", mmon_convert_module_name_to_index (m_info.name),
@@ -152,7 +165,22 @@ mmon_print_tran_info (MMON_TRAN_INFO &tran_info)
 
   for (const auto &t_stat : tran_info.tran_stat)
     {
-      fprintf (stdout, "\t%14d | %17lu\n", t_stat.tranid, t_stat.cur_stat);
+      // There can be some cases that some transactions' cur_stat can have minus value
+      // because they can not allocate memory but free memory.
+      // e.g.
+      // 1. A thread get object from pool but the pool is full because other threads return object to pool
+      //    when the thread return its object to pool. In this case the thread have to free the object.
+      // 2. A thread initialize cache(just alloc) and another therad finalize cache(just free).
+      // ...
+      // So in this case, we just show 0 value to user.
+      if (t_stat.cur_stat >= 0)
+	{
+	  fprintf (stdout, "\t%14d | %17lu\n", t_stat.tranid, t_stat.cur_stat);
+	}
+      else
+	{
+	  fprintf (stdout, "\t%14d | %17lu\n", t_stat.tranid, 0);
+	}
     }
   fprintf (stdout, "\n-----------------------------------------------------\n\n");
 }

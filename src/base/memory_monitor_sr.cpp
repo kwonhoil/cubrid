@@ -55,18 +55,30 @@ namespace cubperf
     std::atomic<uint32_t> expand_resize_count;
   } MMON_MEM_STAT;
 
-  /* TODO: this dummy modules will be changed when heap module is registered */
-  MMON_STAT_INFO dummy_stat_info[] =
+  MMON_STAT_INFO common_stat_info[] =
   {
-    {MMON_STAT_DUMMY_1, NULL, NULL},
-    {MMON_STAT_DUMMY_2, "dummy_comp", "dummy_subcomp"},
+    {MMON_COMMON, NULL, NULL},
+    {MMON_STAT_LAST, NULL, NULL}
+  };
+
+  MMON_STAT_INFO heap_stat_info[] =
+  {
+    {MMON_HEAP_SCAN, "SCANCACHE", NULL},
+    {MMON_HEAP_BESTSPACE, "BESTSPACE CACHE", NULL},
+    {MMON_HEAP_CLASSREPR, "CLASSREPR CACHE", NULL},
+    {MMON_HEAP_CLASSREPR_HASH, "CLASSREPR CACHE", "HASHTABLE"},
+    {MMON_HEAP_ATTRINFO, "ATTRINFO CACHE", NULL},
+    {MMON_HEAP_HFIDTABLE, "HFID TABLE", NULL},
+    {MMON_HEAP_HFIDTABLE_HASH, "HFID TABLE", "HASHTABLE"},
+    {MMON_HEAP_CHNGUESS, "CHNGUESS", NULL},
+    {MMON_HEAP_CHNGUESS_HASH, "CHNGUESS", "HASHTABLE"},
+    {MMON_HEAP_OTHERS, "OTHERS", NULL},
     {MMON_STAT_LAST, NULL, NULL} /* for recognizing end */
   };
 
-  MMON_STAT_INFO long_dummy_stat_info[] =
+  MMON_STAT_INFO others_stat_info[] =
   {
-    {MMON_STAT_LONG_DUMMY_1, NULL, NULL},
-    {MMON_STAT_LONG_DUMMY_2, "LONGDUMMY_ATTR_CACHE", "LINKEDLIST"},
+    {MMON_OTHERS, NULL, NULL},
     {MMON_STAT_LAST, NULL, NULL}
   };
 
@@ -231,7 +243,7 @@ namespace cubperf
 
   inline int mmon_module::get_comp_idx (int comp_idx_map_val) const
   {
-    return (comp_idx_map_val >> 16);
+    return (int) (((uint32_t) comp_idx_map_val) >> 16);
   }
 
   inline int mmon_module::get_subcomp_idx (int comp_idx_map_val) const
@@ -241,7 +253,7 @@ namespace cubperf
 
   inline int memory_monitor::get_module_idx (MMON_STAT_ID stat_id) const
   {
-    return (((int) stat_id) >> 16);
+    return (int) (((uint32_t) stat_id) >> 16);
   }
 
   const char *mmon_subcomponent::get_name ()
@@ -515,6 +527,12 @@ namespace cubperf
   {
     strncpy (info.name, m_mmon->m_server_name.c_str (), m_mmon->m_server_name.size ());
     info.total_mem_usage = m_mmon->m_total_mem_usage.load ();
+
+    // TODO: It's a temporary measure for hiding MMON_OTHERS
+    //       It will be deleted when all other modules in CUBRID are registered in memory_monitor.
+    MMON_MODULE_INFO module_info;
+    m_mmon->m_module[MMON_MODULE_OTHERS]->aggregate_stats (true, module_info);
+    info.total_mem_usage -= module_info.stat.cur_stat;
   }
 
   void memory_monitor::aggregater::get_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info) const
@@ -582,11 +600,12 @@ namespace cubperf
     , m_total_mem_usage {0}
     , m_aggregater {this}
   {
-    /* TODO: this dummy modules will be changed when heap module is registered */
-    m_module[MMON_MODULE_DUMMY] = std::make_unique<mmon_module>
-				  (module_names[MMON_MODULE_DUMMY], dummy_stat_info);
-    m_module[MMON_MODULE_LONG_DUMMY] = std::make_unique<mmon_module>
-				       (module_names[MMON_MODULE_LONG_DUMMY], long_dummy_stat_info);
+    m_module[MMON_MODULE_COMMON] = std::make_unique<mmon_module>
+				   (module_names[MMON_MODULE_COMMON], common_stat_info);
+    m_module[MMON_MODULE_HEAP] = std::make_unique<mmon_module>
+				 (module_names[MMON_MODULE_HEAP], heap_stat_info);
+    m_module[MMON_MODULE_OTHERS] = std::make_unique<mmon_module>
+				   (module_names[MMON_MODULE_OTHERS], others_stat_info);
   }
 
   void memory_monitor::add_stat (MMON_STAT_ID stat_id, int64_t size)
@@ -602,11 +621,17 @@ namespace cubperf
 
   void memory_monitor::add_tran_stat (THREAD_ENTRY *thread_p, int64_t size)
   {
-    LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+    if (thread_p)
+      {
+	LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
-    assert ((size >= 0) || ((uint64_t) (-size) <= tdes->cur_mem_usage));
-
-    tdes->cur_mem_usage += size;
+	/* there are some case that has no LOG_TDES in THREAD_ENTRY
+	 * when server booting */
+	if (tdes)
+	  {
+	    tdes->cur_mem_usage += size;
+	  }
+      }
   }
 
   void memory_monitor::resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old_size,
@@ -782,6 +807,7 @@ void mmon_finalize ()
 	}
 #endif
       delete mmon_Gl;
+      mmon_Gl = nullptr;
     }
 }
 
@@ -845,4 +871,115 @@ void mmon_aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info)
   assert (mmon_Gl != nullptr);
 
   mmon_Gl->aggregate_tran_info (tran_count, info);
+}
+
+MMON_STAT_ID mmon_set_tracking_tag (MMON_STAT_ID new_tag)
+{
+  MMON_STAT_ID prev_tag = MMON_STAT_LAST;
+  THREAD_ENTRY *cur_thread_p;
+
+  if (mmon_Gl != nullptr)
+    {
+      cur_thread_p = thread_get_thread_entry_info ();
+      if (cur_thread_p != NULL)
+	{
+	  prev_tag = cur_thread_p->mmon_tracking_tag;
+	  cur_thread_p->mmon_tracking_tag = new_tag;
+	}
+      else
+	{
+	  // for checking dump
+	  assert (false);
+	}
+    }
+
+  return prev_tag;
+}
+
+void mmon_add_stat_with_tracking_tag (int64_t size)
+{
+  THREAD_ENTRY *cur_thread_p;
+
+  if (mmon_Gl != nullptr)
+    {
+      cur_thread_p = thread_get_thread_entry_info ();
+      if (cur_thread_p != NULL)
+	{
+	  assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
+	  mmon_add_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
+	}
+      else
+	{
+	  // for checking dump
+	  assert (false);
+	}
+    }
+}
+
+void mmon_sub_stat_with_tracking_tag (int64_t size)
+{
+  THREAD_ENTRY *cur_thread_p;
+
+  if (mmon_Gl != nullptr)
+    {
+      cur_thread_p = thread_get_thread_entry_info ();
+      if (cur_thread_p != NULL)
+	{
+	  assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
+	  mmon_sub_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
+	}
+      else
+	{
+	  // for checking dump
+	  assert (false);
+	}
+    }
+}
+
+void mmon_move_stat_with_tracking_tag (int64_t size, MMON_STAT_ID stat_id, bool tag_is_src)
+{
+  THREAD_ENTRY *cur_thread_p;
+
+  if (mmon_Gl != nullptr)
+    {
+      cur_thread_p = thread_get_thread_entry_info ();
+      if (cur_thread_p != NULL)
+	{
+	  assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
+
+	  if (tag_is_src)
+	    {
+	      mmon_move_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, stat_id, size);
+	    }
+	  else
+	    {
+	      mmon_move_stat (cur_thread_p, stat_id, cur_thread_p->mmon_tracking_tag, size);
+	    }
+	}
+      else
+	{
+	  // for checking dump
+	  assert (false);
+	}
+    }
+}
+
+void mmon_resize_stat_with_tracking_tag (int64_t old_size, int64_t new_size)
+{
+  THREAD_ENTRY *cur_thread_p;
+
+  if (mmon_Gl != nullptr)
+    {
+      cur_thread_p = thread_get_thread_entry_info ();
+      if (cur_thread_p != NULL)
+	{
+	  assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
+	  mmon_resize_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, old_size, new_size);
+	}
+      else
+	{
+	  // for checking dump
+	  assert (false);
+	}
+    }
 }

@@ -63,6 +63,9 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "storage_common.h"
+#if defined (SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* defined (SERVER_MODE) */
 
 static const DB_ELO elo_Initializer = { -1LL, NULL, NULL, ELO_NULL, ES_NONE };
 
@@ -102,6 +105,9 @@ elo_create (DB_ELO * elo)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (out_uri));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (strlen (out_uri) + 1);
+#endif
 
   elo_init_structure (elo);
   elo->size = 0;
@@ -154,6 +160,9 @@ elo_copy_structure (const DB_ELO * elo, DB_ELO * dest)
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (strlen (locator) + 1);
+#endif
     }
 
   if (elo->meta_data != NULL)
@@ -163,10 +172,16 @@ elo_copy_structure (const DB_ELO * elo, DB_ELO * dest)
 	{
 	  if (locator != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (strlen (locator) + 1);
+#endif
 	      db_private_free_and_init (NULL, locator);
 	    }
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (strlen (meta_data) + 1);
+#endif
     }
 
   *dest = *elo;
@@ -189,11 +204,17 @@ elo_free_structure (DB_ELO * elo)
     {
       if (elo->locator != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (elo->locator) + 1);
+#endif
 	  db_private_free_and_init (NULL, elo->locator);
 	}
 
       if (elo->meta_data != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (elo->meta_data) + 1);
+#endif
 	  db_private_free_and_init (NULL, elo->meta_data);
 	}
 
@@ -229,6 +250,9 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (strlen (elo->meta_data) + 1);
+#endif
     }
 
   /* if it uses external storage, do transaction work */
@@ -247,6 +271,9 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 	  es_delete_file (out_uri);
 	  goto error_return;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (strlen (locator) + 1);
+#endif
     }
   else
     {
@@ -271,6 +298,9 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		ret = er_errid ();
 		goto error_return;
 	      }
+#ifdef SERVER_MODE
+	    mmon_add_stat_with_tracking_tag (strlen (locator) + 1);
+#endif
 	    ret = lob_locator_change_state (elo->locator, locator, LOB_PERMANENT_CREATED);
 	    if (ret != NO_ERROR)
 	      {
@@ -288,6 +318,9 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		ret = er_errid ();
 		goto error_return;
 	      }
+#ifdef SERVER_MODE
+	    mmon_add_stat_with_tracking_tag (strlen (locator) + 1);
+#endif
 	    ret = lob_locator_drop (elo->locator);
 	    if (ret != NO_ERROR)
 	      {
@@ -310,6 +343,9 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		es_delete_file (out_uri);
 		goto error_return;
 	      }
+#ifdef SERVER_MODE
+	    mmon_add_stat_with_tracking_tag (strlen (locator) + 1);
+#endif
 	    ret = lob_locator_add (locator, LOB_PERMANENT_CREATED);
 	    if (ret != NO_ERROR)
 	      {
@@ -338,11 +374,17 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 error_return:
   if (locator != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (strlen (locator) + 1);
+#endif
       db_private_free_and_init (NULL, locator);
     }
 
   if (meta_data != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (strlen (elo->meta_data) + 1);
+#endif
       db_private_free_and_init (NULL, meta_data);
     }
   return ret;

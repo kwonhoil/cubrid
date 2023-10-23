@@ -71,6 +71,9 @@
 #include "log_append.hpp"
 #include "string_buffer.hpp"
 #include "tde.h"
+#if defined(SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* SERVER_MODE */
 
 #include <set>
 
@@ -978,6 +981,9 @@ heap_stats_entry_free (THREAD_ENTRY * thread_p, void *data, void *args)
       else
 	{
 	  free_and_init (ent);
+#ifdef SERVER_MODE
+	  mmon_sub_stat (thread_p, MMON_HEAP_BESTSPACE, sizeof (HEAP_STATS_ENTRY));
+#endif
 
 	  heap_Bestspace->num_free++;
 	}
@@ -995,6 +1001,9 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
   HEAP_STATS_ENTRY *ent;
   int rc;
   PERF_UTIME_TRACKER time_best_space = PERF_UTIME_TRACKER_INITIALIZER;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_BESTSPACE);
+#endif
 
   assert (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0);
 
@@ -1044,6 +1053,9 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
 
 	  goto end;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat (thread_p, MMON_HEAP_BESTSPACE, sizeof (HEAP_STATS_ENTRY));
+#endif
 
       heap_Bestspace->num_alloc++;
     }
@@ -1078,6 +1090,10 @@ end:
 
   pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   PERF_UTIME_TRACKER_TIME (thread_p, &time_best_space, PSTAT_HF_BEST_SPACE_ADD);
 
   return ent;
@@ -1096,6 +1112,9 @@ heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid)
   int del_cnt = 0;
   int rc;
   PERF_UTIME_TRACKER time_best_space = PERF_UTIME_TRACKER_INITIALIZER;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_BESTSPACE);
+#endif
 
   PERF_UTIME_TRACKER_START (thread_p, &time_best_space);
 
@@ -1118,6 +1137,10 @@ heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid)
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
   pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   PERF_UTIME_TRACKER_TIME (thread_p, &time_best_space, PSTAT_HF_BEST_SPACE_DEL);
 
   return del_cnt;
@@ -1135,6 +1158,9 @@ heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid)
   HEAP_STATS_ENTRY *ent;
   int rc;
   PERF_UTIME_TRACKER time_best_space = PERF_UTIME_TRACKER_INITIALIZER;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_BESTSPACE);
+#endif
 
   PERF_UTIME_TRACKER_START (thread_p, &time_best_space);
   rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
@@ -1156,6 +1182,10 @@ end:
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
 
   pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   PERF_UTIME_TRACKER_TIME (thread_p, &time_best_space, PSTAT_HF_BEST_SPACE_DEL);
 
@@ -1395,6 +1425,10 @@ heap_classrepr_initialize_cache (void)
 	      sizeof (HEAP_CLASSREPR_ENTRY) * heap_Classrepr_cache.num_entries);
       goto exit_on_error;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_CLASSREPR,
+		 sizeof (HEAP_CLASSREPR_ENTRY) * heap_Classrepr_cache.num_entries);
+#endif
 
   cache_entry = heap_Classrepr_cache.area;
   for (i = 0; i < heap_Classrepr_cache.num_entries; i++)
@@ -1424,6 +1458,10 @@ heap_classrepr_initialize_cache (void)
 
       cache_entry[i].last_reprid = NULL_REPRID;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_CLASSREPR,
+		 sizeof (OR_CLASSREP *) * DEFAULT_REPR_INCREMENT * heap_Classrepr_cache.num_entries);
+#endif
 
   /* initialize hash bucket table */
   heap_Classrepr_cache.num_hash = CLASSREPR_HASH_SIZE;
@@ -1435,6 +1473,10 @@ heap_classrepr_initialize_cache (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, heap_Classrepr_cache.num_hash * sizeof (HEAP_CLASSREPR_HASH));
       goto exit_on_error;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_CLASSREPR_HASH,
+		 heap_Classrepr_cache.num_hash * sizeof (HEAP_CLASSREPR_HASH));
+#endif
 
   hash_entry = heap_Classrepr_cache.hash_table;
   for (i = 0; i < heap_Classrepr_cache.num_hash; i++)
@@ -1454,6 +1496,9 @@ heap_classrepr_initialize_cache (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1, size);
       goto exit_on_error;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_CLASSREPR_HASH, size);
+#endif
   lock_entry = heap_Classrepr_cache.lock_table;
   for (i = 0; i < (int) thread_num_total_threads (); i++)
     {
@@ -1499,9 +1544,15 @@ heap_classrepr_finalize_cache (void)
   HEAP_CLASSREPR_HASH *hash_entry;
   int i, j;
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_CLASSREPR);
+#endif
 
   if (heap_Classrepr == NULL)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NO_ERROR;		/* nop */
     }
 
@@ -1509,6 +1560,9 @@ heap_classrepr_finalize_cache (void)
   ret = heap_classrepr_dump_anyfixed ();
   if (ret != NO_ERROR)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return ret;
     }
 #endif /* DEBUG_CLASSREPR_CACHE */
@@ -1533,10 +1587,16 @@ heap_classrepr_finalize_cache (void)
 	      cache_entry[i].repr[j] = NULL;
 	    }
 	}
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (cache_entry[i].max_reprid * sizeof (OR_CLASSREP *));
+#endif
       free_and_init (cache_entry[i].repr);
     }
   if (heap_Classrepr_cache.area != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (heap_Classrepr_cache.num_entries * sizeof (HEAP_CLASSREPR_ENTRY));
+#endif
       free_and_init (heap_Classrepr_cache.area);
     }
   heap_Classrepr_cache.num_entries = -1;
@@ -1547,15 +1607,23 @@ heap_classrepr_finalize_cache (void)
     {
       pthread_mutex_destroy (&hash_entry[i].hash_mutex);
     }
-  heap_Classrepr_cache.num_hash = -1;
   if (heap_Classrepr_cache.hash_table != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_CLASSREPR_HASH,
+		     heap_Classrepr_cache.num_hash * sizeof (HEAP_CLASSREPR_HASH));
+#endif
       free_and_init (heap_Classrepr_cache.hash_table);
     }
+  heap_Classrepr_cache.num_hash = -1;
 
   /* finalize hash lock table */
   if (heap_Classrepr_cache.lock_table != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_CLASSREPR_HASH,
+		     thread_num_total_threads () * sizeof (HEAP_CLASSREPR_LOCK));
+#endif
       free_and_init (heap_Classrepr_cache.lock_table);
     }
 
@@ -1567,6 +1635,10 @@ heap_classrepr_finalize_cache (void)
   pthread_mutex_destroy (&heap_Classrepr_cache.free_list.free_mutex);
 
   heap_Classrepr = NULL;
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return ret;
 }
@@ -1583,9 +1655,15 @@ heap_classrepr_entry_reset (HEAP_CLASSREPR_ENTRY * cache_entry)
 {
   int i;
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_CLASSREPR);
+#endif
 
   if (cache_entry == NULL)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NO_ERROR;		/* nop */
     }
 
@@ -1615,6 +1693,10 @@ heap_classrepr_entry_reset (HEAP_CLASSREPR_ENTRY * cache_entry)
 	}
       else
 	{
+#ifdef SERVER_MODE
+	  mmon_resize_stat_with_tracking_tag (cache_entry->max_reprid * sizeof (OR_CLASSREP *),
+					      DEFAULT_REPR_INCREMENT * sizeof (OR_CLASSREP *));
+#endif
 	  free_and_init (t);
 	  cache_entry->max_reprid = DEFAULT_REPR_INCREMENT;
 	  memset (cache_entry->repr, 0, DEFAULT_REPR_INCREMENT * sizeof (OR_CLASSREP *));
@@ -1622,6 +1704,10 @@ heap_classrepr_entry_reset (HEAP_CLASSREPR_ENTRY * cache_entry)
 
     }
   cache_entry->last_reprid = NULL_REPRID;
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return ret;
 }
@@ -1893,10 +1979,16 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
   HEAP_CLASSREPR_ENTRY *cache_entry;
   int rv;
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_CLASSREPR);
+#endif
 
   if (*idx_incache < 0)
     {
       or_free_classrep (classrep);
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NO_ERROR;
     }
 
@@ -1957,6 +2049,10 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
     }
   pthread_mutex_unlock (&cache_entry->mutex);
   *idx_incache = -1;
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return ret;
 }
@@ -2248,6 +2344,9 @@ heap_classrepr_get_from_record (THREAD_ENTRY * thread_p, REPR_ID * last_reprid, 
   RECDES *recdes = NULL;
   HEAP_SCANCACHE scan_cache;
   OR_CLASSREP *repr = NULL;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_CLASSREPR);
+#endif
 
   if (last_reprid != NULL)
     {
@@ -2279,6 +2378,9 @@ end:
     {
       heap_scancache_end (thread_p, &scan_cache);
     }
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
   return repr;
 }
 
@@ -2304,6 +2406,9 @@ heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * cla
   OR_CLASSREP *repr_last = NULL;
   REPR_ID last_reprid;
   int r;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_CLASSREPR);
+#endif
 
   *idx_incache = -1;
 
@@ -2441,6 +2546,9 @@ search_begin:
 	      or_free_classrep (repr_last);
 	    }
 
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	  /* return disk repr when repr cache is full */
 	  return repr_from_record;
 	}
@@ -2448,6 +2556,9 @@ search_begin:
       /* check if cache_entry->repr[last_reprid] is valid. */
       if (last_reprid >= cache_entry->max_reprid)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat (thread_p, MMON_HEAP_CLASSREPR, cache_entry->max_reprid * sizeof (OR_CLASSREP *));
+#endif
 	  free_and_init (cache_entry->repr);
 
 	  cache_entry->repr = (OR_CLASSREP **) malloc ((last_reprid + 1) * sizeof (OR_CLASSREP *));
@@ -2468,6 +2579,9 @@ search_begin:
 		}
 	      goto exit;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat (thread_p, MMON_HEAP_CLASSREPR, (last_reprid + 1) * sizeof (OR_CLASSREP *));
+#endif
 	  cache_entry->max_reprid = last_reprid + 1;
 
 	  memset (cache_entry->repr, 0, cache_entry->max_reprid * sizeof (OR_CLASSREP *));
@@ -2591,6 +2705,9 @@ exit:
     {
       or_free_classrep (repr_last);
     }
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
   return repr;
 }
 
@@ -2685,6 +2802,9 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   char *string = NULL;
   int alloced_string = 0;
   HEAP_SCANCACHE scan_cache;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_CLASSREPR);
+#endif
 
   /*
    * The class is fetched to print the attribute names.
@@ -2743,6 +2863,9 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 
       if (string != NULL && alloced_string == 1)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (string) + 1);
+#endif
 	  db_private_free_and_init (thread_p, string);
 	}
 
@@ -2755,6 +2878,9 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 	    }
 	  fprintf (fp, " Inherited from Class: oid = %d|%d|%d, Name = %s\n", (int) attrepr->classoid.volid,
 		   attrepr->classoid.pageid, (int) attrepr->classoid.slotid, classname);
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (classname) + 1);
+#endif
 	  free_and_init (classname);
 	}
 
@@ -2830,6 +2956,10 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 
   (void) heap_scancache_end (thread_p, &scan_cache);
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return ret;
 
 exit_on_error:
@@ -2837,6 +2967,10 @@ exit_on_error:
   (void) heap_scancache_end (thread_p, &scan_cache);
 
   fprintf (fp, "Dump has been aborted...");
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return (ret == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -3255,6 +3389,9 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
   bool best_hint_is_used;
   PERF_UTIME_TRACKER time_best_space = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_find_page_best_space = PERF_UTIME_TRACKER_INITIALIZER;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_BESTSPACE);
+#endif
 
   assert (PGBUF_IS_CLEAN_WATCHER (pg_watcher));
 
@@ -3458,6 +3595,10 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
    * start) into the findbest space ring.
    */
   *idx_badspace = idx_worstspace;
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   /*
    * Reset back the timeout value of the transaction
@@ -6932,13 +7073,29 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 
       if (scan_cache->num_btids > 0)
 	{
+#ifdef SERVER_MODE
+	  if (scan_cache->m_index_stats)
+	    {
+	      multi_index_unique_stats::container_type stat_map = scan_cache->m_index_stats->get_map ();
+	      mmon_sub_stat (thread_p, MMON_HEAP_SCAN,
+			     (sizeof (BTID) + sizeof (btree_unique_stats)) * stat_map.size ());
+	      mmon_sub_stat (thread_p, MMON_HEAP_SCAN, sizeof (multi_index_unique_stats));
+	    }
+#endif
 	  delete scan_cache->m_index_stats;
 	  scan_cache->m_index_stats = new multi_index_unique_stats ();
+#ifdef SERVER_MODE
+	  mmon_add_stat (thread_p, MMON_HEAP_SCAN, sizeof (multi_index_unique_stats));
+#endif
 	  /* initialize the structure */
 	  for (i = 0; i < scan_cache->num_btids; i++)
 	    {
 	      scan_cache->m_index_stats->add_empty (classrepr->indexes[i].btid);
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat (thread_p, MMON_HEAP_SCAN,
+			 (sizeof (BTID) + sizeof (btree_unique_stats)) * scan_cache->num_btids);
+#endif
 	}
 
       /* free class representation */
@@ -7149,6 +7306,14 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
     }
   else
     {
+#ifdef SERVER_MODE
+      if (scan_cache->m_index_stats)
+	{
+	  multi_index_unique_stats::container_type stat_map = scan_cache->m_index_stats->get_map ();
+	  mmon_sub_stat (thread_p, MMON_HEAP_SCAN, (sizeof (BTID) + sizeof (btree_unique_stats)) * stat_map.size ());
+	  mmon_sub_stat (thread_p, MMON_HEAP_SCAN, sizeof (multi_index_unique_stats));
+	}
+#endif
       delete scan_cache->m_index_stats;
       scan_cache->m_index_stats = NULL;
       scan_cache->num_btids = 0;
@@ -7172,6 +7337,9 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 	  while (curr_node != NULL)
 	    {
 	      next_node = curr_node->next;
+#ifdef SERVER_MODE
+	      mmon_sub_stat (thread_p, MMON_HEAP_SCAN, sizeof (HEAP_SCANCACHE_NODE_LIST));
+#endif
 	      db_private_free_and_init (thread_p, curr_node);
 	      curr_node = next_node;
 	    }
@@ -9407,6 +9575,9 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
 		      (strlen (classname) + 1) * sizeof (char));
 	      error_code = ER_FAILED;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (strlen (classname) + 1);
+#endif
 	}
       else
 	{
@@ -9545,6 +9716,9 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	{
 	  goto exit_on_error;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat (thread_p, MMON_HEAP_ATTRINFO, requested_num_attrs * sizeof (*(attr_info->values)));
+#endif
     }
   else
     {
@@ -9832,6 +10006,9 @@ heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRI
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   int i;
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_ATTRINFO);
+#endif
 
   /*
    * If we do not need to cache anything (case of only clear values and
@@ -9842,6 +10019,9 @@ heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRI
     {
       if (attr_info->read_classrepr->id == reprid)
 	{
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	  return NO_ERROR;
 	}
 
@@ -9857,6 +10037,9 @@ heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRI
 
   if (reprid == NULL_REPRID)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NO_ERROR;
     }
 
@@ -9875,6 +10058,9 @@ heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRI
 	}
       attr_info->read_classrepr = attr_info->last_classrepr;
       attr_info->read_cacheindex = -1;	/* Don't need to free this one */
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NO_ERROR;
     }
 
@@ -9903,9 +10089,17 @@ heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRI
       goto exit_on_error;
     }
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return ret;
 
 exit_on_error:
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -9942,6 +10136,9 @@ heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info)
 
   if (attr_info->values)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, attr_info->num_values * sizeof (HEAP_ATTRVALUE));
+#endif
       db_private_free_and_init (thread_p, attr_info->values);
     }
   OID_SET_NULL (&attr_info->class_oid);
@@ -10024,6 +10221,9 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   int disk_bound = false;
   volatile int disk_length = -1;
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_ATTRINFO);
+#endif
 
   /* Initialize disk value information */
   disk_data = NULL;
@@ -10166,9 +10366,17 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	}
     }
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return ret;
 
 exit_on_error:
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -10409,6 +10617,9 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
   int i;
   HEAP_ATTRVALUE *value;
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_ATTRINFO);
+#endif
 
   assert (attr_info != NULL);
   assert (attr_info->num_values > 0);
@@ -10464,9 +10675,17 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
 	}
     }
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return ret;
 
 exit_on_error:
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -10783,6 +11002,9 @@ heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATT
   bool is_scan_cache_started = false, is_attrinfo_started = false;
   char *string = NULL;
   int alloced_string = 0;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_ATTRINFO);
+#endif
 
   if (type_id == NULL || values_id == NULL)
     {
@@ -10842,6 +11064,9 @@ heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATT
 
       if (string != NULL && alloced_string == 1)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (string) + 1);
+#endif
 	  db_private_free_and_init (thread_p, string);
 	}
     }
@@ -10861,6 +11086,9 @@ cleanup:
     {
       heap_scancache_end (thread_p, &scan);
     }
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
   return error;
 }
 
@@ -10959,6 +11187,9 @@ heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid, OR_PA
   REPR_ID class_repr_id = NULL_REPRID;
   HFID class_hfid;
   int has_partition_info = 0;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_OTHERS);
+#endif
 
   *parts = NULL;
   *parts_count = 0;
@@ -11005,6 +11236,9 @@ heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid, OR_PA
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (subclasses_count + 1) * sizeof (OR_PARTITION));
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag ((subclasses_count + 1) * sizeof (OR_PARTITION));
+#endif
 
   error = heap_get_partitions_from_subclasses (thread_p, subclasses, parts_count, partitions);
   if (error != NO_ERROR)
@@ -11036,6 +11270,9 @@ heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid, OR_PA
 cleanup:
   if (subclasses != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (subclasses_count * sizeof (OID));
+#endif
       free_and_init (subclasses);
     }
   if (part_info.values != NULL)
@@ -11044,6 +11281,9 @@ cleanup:
     }
   if (error != NO_ERROR && partitions != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag ((subclasses_count + 1) * sizeof (OR_PARTITION));
+#endif
       db_private_free (thread_p, partitions);
       *parts = NULL;
       *parts_count = 0;
@@ -11073,6 +11313,9 @@ heap_clear_partition_info (THREAD_ENTRY * thread_p, OR_PARTITION * parts, int pa
 	    }
 	}
 
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (OR_PARTITION) * parts_count);
+#endif
       db_private_free (thread_p, parts);
     }
 }
@@ -11178,6 +11421,9 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
   PR_TYPE *pr_type;		/* Primitive type array function structure */
   TP_DOMAIN_STATUS dom_status;
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_ATTRINFO);
+#endif
 
   /*
    * check to make sure the attr_info has been used, should never be empty.
@@ -11185,6 +11431,9 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 
   if (attr_info->num_values == -1)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return ER_FAILED;
     }
 
@@ -11255,9 +11504,17 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 
   value->state = HEAP_WRITTEN_ATTRVALUE;
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return ret;
 
 exit_on_error:
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -11288,6 +11545,9 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
   REPR_ID reprid;		/* Representation of object */
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_ATTRINFO);
+#endif
 
   ret = heap_attrinfo_check (inst_oid, attr_info);
   if (ret != NO_ERROR)
@@ -11379,9 +11639,17 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
       attr_info->inst_chn = -1;
     }
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return ret;
 
 exit_on_error:
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -11522,12 +11790,18 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   // *INDENT-OFF*
   std::set<int> incremented_attrids;
   // *INDENT-ON*
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_ATTRINFO);
+#endif
 
   assert (new_recdes != NULL);
 
   /* check to make sure the attr_info has been used, it should not be empty. */
   if (attr_info->num_values == -1)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return S_ERROR;
     }
 
@@ -11536,6 +11810,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
    */
   if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, attr_info) != NO_ERROR)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return S_ERROR;
     }
 
@@ -11657,6 +11934,9 @@ resize_and_start:
 	  pr_type = value->last_attrepr->domain->type;
 	  if (pr_type == NULL)
 	    {
+#ifdef SERVER_MODE
+	      (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	      return S_ERROR;
 	    }
 
@@ -11772,6 +12052,9 @@ resize_and_start:
 		      elo_p->meta_data = new_meta_data;
 		      error = db_elo_copy (db_get_elo (dbvalue), &dest_elo);
 
+#ifdef SERVER_MODE
+		      mmon_sub_stat_with_tracking_tag (strlen (elo_p->meta_data) + 1);
+#endif
 		      free_and_init (elo_p->meta_data);
 		      elo_p->meta_data = save_meta_data;
 
@@ -11837,6 +12120,10 @@ resize_and_start:
       break;
     }
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return status;
 }
 
@@ -11895,6 +12182,9 @@ heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACH
 	  heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, classrepr->n_attributes * sizeof (ATTR_ID));
+#endif
     }
   else
     {
@@ -11914,6 +12204,12 @@ heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACH
 
   if (set_attrids != guess_attrids)
     {
+#ifdef SERVER_MODE
+      if (set_attrids != NULL)
+	{
+	  mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, classrepr->n_attributes * sizeof (ATTR_ID));
+	}
+#endif
       free_and_init (set_attrids);
     }
 
@@ -11970,6 +12266,9 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	  heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat (thread_p, MMON_HEAP_ATTRINFO, classrepr->n_attributes * sizeof (ATTR_ID));
+#endif
     }
   else
     {
@@ -12062,6 +12361,9 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	      attr_info->num_values = -1;
 	      goto error;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat (thread_p, MMON_HEAP_ATTRINFO, num_found_attrs * sizeof (HEAP_ATTRVALUE));
+#endif
 	}
 
       /*
@@ -12092,6 +12394,12 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 
   if (set_attrids != guess_attrids)
     {
+#ifdef SERVER_MODE
+      if (set_attrids != NULL)
+	{
+	  mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, classrepr->n_attributes * sizeof (ATTR_ID));
+	}
+#endif
       free_and_init (set_attrids);
     }
 
@@ -12109,6 +12417,12 @@ error:
 
   if (set_attrids != guess_attrids)
     {
+#ifdef SERVER_MODE
+      if (set_attrids != NULL)
+	{
+	  mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, classrepr->n_attributes * sizeof (ATTR_ID));
+	}
+#endif
       free_and_init (set_attrids);
     }
 
@@ -12221,6 +12535,9 @@ heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, num_found_attrs * sizeof (ATTR_ID));
 	  goto error;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat (thread_p, MMON_HEAP_ATTRINFO, num_found_attrs * sizeof (ATTR_ID));
+#endif
     }
 
   for (i = 0; i < num_found_attrs; i++)
@@ -12246,6 +12563,12 @@ heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * 
    */
   if (set_attrids != guess_attrids)
     {
+#ifdef SERVER_MODE
+      if (set_attrids != NULL)
+	{
+	  mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, num_found_attrs * sizeof (ATTR_ID));
+	}
+#endif
       free_and_init (set_attrids);
     }
 
@@ -12261,6 +12584,12 @@ error:
 
   if (set_attrids != guess_attrids)
     {
+#ifdef SERVER_MODE
+      if (set_attrids != NULL)
+	{
+	  mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, num_found_attrs * sizeof (ATTR_ID));
+	}
+#endif
       free_and_init (set_attrids);
     }
 
@@ -12610,6 +12939,9 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
   DB_VALUE *fi_res = NULL;
   int fi_attr_index_start = -1;
   int fi_col_id = -1;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_ATTRINFO);
+#endif
 
   assert (DB_IS_NULL (db_valuep));
 
@@ -12620,6 +12952,9 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	  if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, func_index_info->expr->cache_attrinfo) !=
 	      NO_ERROR)
 	    {
+#ifdef SERVER_MODE
+	      (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	      return NULL;
 	    }
 	}
@@ -12629,6 +12964,9 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
       if (heap_eval_function_index (thread_p, func_index_info, n_atts, att_ids, attr_info, recdes, -1, db_valuep,
 				    NULL, NULL) != NO_ERROR)
 	{
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	  return NULL;
 	}
       fi_res = db_valuep;
@@ -12639,6 +12977,9 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
       /* Single column index. */
       if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, attr_info) != NO_ERROR)
 	{
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	  return NULL;
 	}
     }
@@ -12665,8 +13006,14 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	  midxkey.buf = (char *) db_private_alloc (thread_p, midxkey_size);
 	  if (midxkey.buf == NULL)
 	    {
+#ifdef SERVER_MODE
+	      (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	      return NULL;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (midxkey_size);
+#endif
 	}
       else
 	{
@@ -12676,6 +13023,9 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
       if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res, fi_col_id,
 				     fi_attr_index_start, midxkey_domain) == NULL)
 	{
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	  return NULL;
 	}
 
@@ -12698,6 +13048,9 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
        */
       if (func_index_info)
 	{
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	  ret_valp = db_valuep;
 	  return ret_valp;
 	}
@@ -12714,6 +13067,10 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	    }
 	}
     }
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return ret_valp;
 }
@@ -12759,6 +13116,9 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
   DB_VALUE *ret_val = NULL;
   DB_VALUE *fi_res = NULL;
   TP_DOMAIN *fi_domain = NULL;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_ATTRINFO);
+#endif
 
   assert (DB_IS_NULL (db_value));
 
@@ -12768,6 +13128,9 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
    */
   if ((idx_attrinfo->num_values == -1) || (btid_index >= idx_attrinfo->last_classrepr->n_indexes))
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NULL;
     }
 
@@ -12783,6 +13146,9 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 	  /* Get the needed representation */
 	  if (heap_attrinfo_recache (thread_p, reprid, idx_attrinfo) != NO_ERROR)
 	    {
+#ifdef SERVER_MODE
+	      (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	      return NULL;
 	    }
 	}
@@ -12798,6 +13164,9 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
       if (heap_eval_function_index (thread_p, NULL, -1, NULL, idx_attrinfo, recdes, btid_index, db_value,
 				    func_indx_pred, &fi_domain) != NO_ERROR)
 	{
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	  return NULL;
 	}
       fi_res = db_value;
@@ -12827,8 +13196,14 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 	  midxkey.buf = (char *) db_private_alloc (thread_p, midxkey_size);
 	  if (midxkey.buf == NULL)
 	    {
+#ifdef SERVER_MODE
+	      (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	      return NULL;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (midxkey_size);
+#endif
 	}
       else
 	{
@@ -12839,6 +13214,9 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
       if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain) == NULL)
 	{
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	  return NULL;
 	}
 
@@ -12869,6 +13247,10 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 	      assert (fi_domain != NULL);
 	      *key_domain = tp_domain_cache (fi_domain);
 	    }
+
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	  return ret_val;
 	}
       ret_val = heap_attrinfo_access (index->atts[0]->id, idx_attrinfo);
@@ -12915,6 +13297,9 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
 	      if (prefix_dom == NULL)
 		{
+#ifdef SERVER_MODE
+		  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 		  return NULL;
 		}
 	      else
@@ -12928,6 +13313,10 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 	    }
 	}
     }
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return ret_val;
 }
@@ -13153,6 +13542,9 @@ heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, const OID * class_oid, cons
 	{
 	  goto exit_on_error;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (n * sizeof (ATTR_ID));
+#endif
 
       /* fill the array with the attribute ID's */
       for (i = 0; i < n; i++)
@@ -13164,6 +13556,12 @@ heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, const OID * class_oid, cons
   if (btnamepp)
     {
       *btnamepp = strdup (indexp->btname);
+#ifdef SERVER_MODE
+      if (*btnamepp != NULL)
+	{
+	  mmon_add_stat_with_tracking_tag (strlen (indexp->btname) + 1);
+	}
+#endif
     }
 
   if (attrs_prefix_length && indexp->type == BTREE_INDEX)
@@ -13174,6 +13572,9 @@ heap_get_indexinfo_of_btid (THREAD_ENTRY * thread_p, const OID * class_oid, cons
 	{
 	  goto exit_on_error;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (n * sizeof (int));
+#endif
 
       for (i = 0; i < n; i++)
 	{
@@ -13202,11 +13603,17 @@ exit_on_error:
 
   if (attr_ids && *attr_ids)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (n * sizeof (ATTR_ID));
+#endif
       db_private_free_and_init (thread_p, *attr_ids);
     }
 
   if (btnamepp && *btnamepp)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (strlen (indexp->btname) + 1);
+#endif
       free_and_init (*btnamepp);
     }
 
@@ -13214,6 +13621,9 @@ exit_on_error:
     {
       if (*attrs_prefix_length)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (n * sizeof (int));
+#endif
 	  db_private_free_and_init (thread_p, *attrs_prefix_length);
 	}
       *attrs_prefix_length = NULL;
@@ -13341,6 +13751,9 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_max_oid * sizeof (OID));
 		  goto error;
 		}
+#ifdef SERVER_MODE
+	      mmon_resize_stat (thread_p, MMON_HEAP_OTHERS, *max_oid_cnt * sizeof (OID), new_max_oid * sizeof (OID));
+#endif
 
 	      /*
 	       * Set the pointers and advance to current area pointer
@@ -13407,6 +13820,10 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
 				      new_max_oid * sizeof (OID));
 			      goto error;
 			    }
+#ifdef SERVER_MODE
+			  mmon_resize_stat (thread_p, MMON_HEAP_OTHERS, *max_oid_cnt * sizeof (OID),
+					    new_max_oid * sizeof (OID));
+#endif
 
 			  /*
 			   * Set the pointers and advance to current area pointer
@@ -13432,6 +13849,9 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
      */
     if (*oid_list != NULL)
       {
+#ifdef SERVER_MODE
+	mmon_sub_stat (thread_p, MMON_HEAP_OTHERS, *max_oid_cnt * sizeof (OID));
+#endif
 	free_and_init (*oid_list);
       }
 
@@ -13443,6 +13863,12 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
 error:
   /* XXXXXXX */
 
+#ifdef SERVER_MODE
+  if (*oid_list != NULL)
+    {
+      mmon_sub_stat (thread_p, MMON_HEAP_OTHERS, *max_oid_cnt * sizeof (OID));
+    }
+#endif
   free_and_init (*oid_list);
   *max_oid_cnt = 0;
   heap_attrinfo_end (thread_p, &attr_info);
@@ -14306,6 +14732,9 @@ heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid)
 static DISK_ISVALID
 heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk)
 {
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_OTHERS);
+#endif
   chk->ht = mht_create ("Validate Relocation entries hash table", HEAP_CHK_ADD_UNFOUND_RELOCOIDS, oid_hash,
 			oid_compare_equals);
   if (chk->ht == NULL)
@@ -14314,6 +14743,9 @@ heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk)
       chk->unfound_reloc_oids = NULL;
       chk->max_unfound_reloc = -1;
       chk->num_unfound_reloc = -1;
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return DISK_ERROR;
     }
 
@@ -14327,11 +14759,17 @@ heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk)
 	{
 	  mht_destroy (chk->ht);
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (sizeof (*chk->unfound_reloc_oids) * HEAP_CHK_ADD_UNFOUND_RELOCOIDS);
+#endif
 
       chk->ht = NULL;
       chk->unfound_reloc_oids = NULL;
       chk->max_unfound_reloc = -1;
       chk->num_unfound_reloc = -1;
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return DISK_ERROR;
     }
 
@@ -14340,6 +14778,10 @@ heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk)
   chk->verify = true;
   chk->verify_not_vacuumed = false;
   chk->not_vacuumed_res = DISK_VALID;
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return DISK_VALID;
 }
@@ -14362,6 +14804,9 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
   HEAP_CHK_RELOCOID *forward;
   DISK_ISVALID valid_reloc = DISK_VALID;
   int i;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_OTHERS);
+#endif
 
   if (chk->not_vacuumed_res != DISK_VALID)
     {
@@ -14395,6 +14840,9 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
 		}
 	      else
 		{
+#ifdef SERVER_MODE
+		  mmon_add_stat_with_tracking_tag (sizeof (HEAP_CHK_RELOCOID));
+#endif
 		  free_and_init (forward);
 		}
 	    }
@@ -14427,7 +14875,14 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
     }
 
   mht_destroy (chk->ht);
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (sizeof (*chk->unfound_reloc_oids) * HEAP_CHK_ADD_UNFOUND_RELOCOIDS);
+#endif
   free_and_init (chk->unfound_reloc_oids);
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return valid_reloc;
 }
@@ -14461,6 +14916,12 @@ heap_chkreloc_print_notfound (const void *ignore_reloc_oid, void *ent, void *xch
   /* mht_rem() has been updated to take a function and an arg pointer that can be called on the entry before it is
    * removed.  We may want to take advantage of that here to free the memory associated with the entry */
   (void) mht_rem (chk->ht, &forward->reloc_oid, NULL, NULL);
+#ifdef SERVER_MODE
+  if (forward != NULL)
+    {
+      mmon_add_stat_with_tracking_tag (sizeof (HEAP_CHK_RELOCOID));
+    }
+#endif
   free_and_init (forward);
 
   return NO_ERROR;
@@ -14503,6 +14964,9 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
   void *ptr;
   bool found;
   int i;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag;
+#endif
 
   if (chk->verify != true)
     {
@@ -14514,6 +14978,10 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
       chk->not_vacuumed_res = DISK_ERROR;
       return DISK_ERROR;
     }
+
+#ifdef SERVER_MODE
+  prev_tag = mmon_set_tracking_tag (MMON_HEAP_OTHERS);
+#endif
 
   oid.volid = pgbuf_get_volume_id (pgptr);
   oid.pageid = pgbuf_get_page_id (pgptr);
@@ -14570,6 +15038,9 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 	      forward = (HEAP_CHK_RELOCOID *) malloc (sizeof (HEAP_CHK_RELOCOID));
 	      if (forward == NULL)
 		{
+#ifdef SERVER_MODE
+		  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 		  /*
 		   * Out of memory
 		   */
@@ -14577,10 +15048,16 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 
 		  return DISK_ERROR;
 		}
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (sizeof (HEAP_CHK_RELOCOID));
+#endif
 	      forward->real_oid = oid;
 	      forward->reloc_oid = *peek_oid;
 	      if (mht_put (chk->ht, &forward->reloc_oid, forward) == NULL)
 		{
+#ifdef SERVER_MODE
+		  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 		  /*
 		   * Failure in mht_put
 		   */
@@ -14604,6 +15081,9 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 	      overflow_vpid.pageid = overflow_oid->pageid;
 	      if (VPID_ISNULL (&overflow_vpid))
 		{
+#ifdef SERVER_MODE
+		  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 		  chk->not_vacuumed_res = DISK_ERROR;
 		  return DISK_ERROR;
 		}
@@ -14613,11 +15093,17 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 		pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	      if (overflow_page == NULL)
 		{
+#ifdef SERVER_MODE
+		  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 		  chk->not_vacuumed_res = DISK_ERROR;
 		  return DISK_ERROR;
 		}
 	      if (heap_get_mvcc_rec_header_from_overflow (overflow_page, &rec_header, &recdes) != NO_ERROR)
 		{
+#ifdef SERVER_MODE
+		  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 		  pgbuf_unfix_and_init (thread_p, overflow_page);
 		  chk->not_vacuumed_res = DISK_ERROR;
 		  return DISK_ERROR;
@@ -14636,6 +15122,9 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 		case DISK_ERROR:
 		default:
 		  chk->not_vacuumed_res = DISK_ERROR;
+#ifdef SERVER_MODE
+		  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 		  return DISK_ERROR;
 		  break;
 		}
@@ -14657,6 +15146,9 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 		case DISK_ERROR:
 		default:
 		  chk->not_vacuumed_res = DISK_ERROR;
+#ifdef SERVER_MODE
+		  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 		  return DISK_ERROR;
 		  break;
 		}
@@ -14678,6 +15170,9 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 		case DISK_ERROR:
 		default:
 		  chk->not_vacuumed_res = DISK_ERROR;
+#ifdef SERVER_MODE
+		  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 		  return DISK_ERROR;
 		  break;
 		}
@@ -14698,6 +15193,9 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 	       * before it is removed.  We may want to take advantage of that here to free the memory associated with
 	       * the entry */
 	      (void) mht_rem (chk->ht, &forward->reloc_oid, NULL, NULL);
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (sizeof (HEAP_CHK_RELOCOID));
+#endif
 	      free_and_init (forward);
 	    }
 	  else
@@ -14717,10 +15215,19 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 		  if (ptr == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) i);
+#ifdef SERVER_MODE
+		      (void) mmon_set_tracking_tag (prev_tag);
+#endif
 		      return DISK_ERROR;
 		    }
 		  else
 		    {
+#ifdef SERVER_MODE
+		      mmon_resize_stat_with_tracking_tag (chk->max_unfound_reloc * sizeof (*chk->unfound_reloc_oids),
+							  (chk->max_unfound_reloc +
+							   HEAP_CHK_ADD_UNFOUND_RELOCOIDS) *
+							  sizeof (*chk->unfound_reloc_oids));
+#endif
 		      chk->unfound_reloc_oids = (OID *) ptr;
 		      chk->max_unfound_reloc += HEAP_CHK_ADD_UNFOUND_RELOCOIDS;
 		    }
@@ -14737,6 +15244,9 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 	}
     }
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
   return DISK_VALID;
 }
 
@@ -14775,6 +15285,9 @@ heap_chnguess_initialize (void)
   HEAP_CHNGUESS_ENTRY *entry;
   int i;
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_CHNGUESS_HASH);
+#endif
 
   if (heap_Guesschn != NULL)
     {
@@ -14820,6 +15333,10 @@ heap_chnguess_initialize (void)
       mht_destroy (heap_Guesschn_area.ht);
       goto exit_on_error;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_CHNGUESS,
+		 sizeof (HEAP_CHNGUESS_ENTRY) * heap_Guesschn_area.num_entries);
+#endif
 
   heap_Guesschn_area.bitindex = (unsigned char *) malloc (heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries);
   if (heap_Guesschn_area.bitindex == NULL)
@@ -14828,9 +15345,17 @@ heap_chnguess_initialize (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1,
 	      (size_t) (heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries));
       mht_destroy (heap_Guesschn_area.ht);
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_CHNGUESS,
+		     sizeof (HEAP_CHNGUESS_ENTRY) * heap_Guesschn_area.num_entries);
+#endif
       free_and_init (heap_Guesschn_area.entries);
       goto exit_on_error;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_CHNGUESS,
+		 heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries);
+#endif
 
   /*
    * Initialize every entry as not recently freed
@@ -14847,9 +15372,17 @@ heap_chnguess_initialize (void)
     }
   heap_Guesschn = &heap_Guesschn_area;
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return ret;
 
 exit_on_error:
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return (ret == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -14928,6 +15461,11 @@ heap_chnguess_realloc (void)
   /*
    * Now throw previous storage
    */
+#ifdef SERVER_MODE
+  mmon_resize_stat (thread_get_thread_entry_info (), MMON_HEAP_CHNGUESS,
+		    save_nbytes * heap_Guesschn_area.num_entries,
+		    heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries);
+#endif
   free_and_init (save_bitindex);
 
   return ret;
@@ -14947,13 +15485,25 @@ static int
 heap_chnguess_finalize (void)
 {
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_CHNGUESS_HASH);
+#endif
 
   if (heap_Guesschn == NULL)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NO_ERROR;		/* nop */
     }
 
   mht_destroy (heap_Guesschn->ht);
+#ifdef SERVER_MODE
+  mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_CHNGUESS,
+		 sizeof (HEAP_CHNGUESS_ENTRY) * heap_Guesschn->num_entries);
+  mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_CHNGUESS,
+		 heap_Guesschn->nbytes * heap_Guesschn->num_entries);
+#endif
   free_and_init (heap_Guesschn->entries);
   free_and_init (heap_Guesschn->bitindex);
   heap_Guesschn->ht = NULL;
@@ -14964,6 +15514,10 @@ heap_chnguess_finalize (void)
   heap_Guesschn->nbytes = 0;
 
   heap_Guesschn = NULL;
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return ret;
 }
@@ -14976,6 +15530,9 @@ static int
 heap_stats_bestspace_initialize (void)
 {
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_BESTSPACE);
+#endif
 
   if (heap_Bestspace != NULL)
     {
@@ -15011,9 +15568,17 @@ heap_stats_bestspace_initialize (void)
   heap_Bestspace->free_list_count = 0;
   heap_Bestspace->free_list = NULL;
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return ret;
 
 exit_on_error:
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return (ret == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -15029,9 +15594,15 @@ heap_stats_bestspace_finalize (void)
 {
   HEAP_STATS_ENTRY *ent;
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_BESTSPACE);
+#endif
 
   if (heap_Bestspace == NULL)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NO_ERROR;
     }
 
@@ -15046,6 +15617,9 @@ heap_stats_bestspace_finalize (void)
 	  heap_Bestspace->free_list = ent->next;
 	  ent->next = NULL;
 
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (sizeof (HEAP_STATS_ENTRY));
+#endif
 	  free (ent);
 
 	  heap_Bestspace->free_list_count--;
@@ -15069,6 +15643,10 @@ heap_stats_bestspace_finalize (void)
 
   heap_Bestspace = NULL;
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return ret;
 }
 
@@ -15088,9 +15666,15 @@ heap_chnguess_decache (const OID * oid)
 {
   HEAP_CHNGUESS_ENTRY *entry;
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_CHNGUESS_HASH);
+#endif
 
   if (heap_Guesschn == NULL)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NO_ERROR;		/* nop */
     }
 
@@ -15111,6 +15695,10 @@ heap_chnguess_decache (const OID * oid)
     {
       heap_Guesschn->schema_change = false;
     }
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return ret;
 }
@@ -15261,6 +15849,9 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
   int i;
   bool can_continue;
   HEAP_CHNGUESS_ENTRY *entry;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag;
+#endif
 
   if (heap_Guesschn == NULL)
     {
@@ -15272,11 +15863,18 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
       return NULL_CHN;
     }
 
+#ifdef SERVER_MODE
+  prev_tag = mmon_set_tracking_tag (MMON_HEAP_CHNGUESS);
+#endif
+
   if (heap_Guesschn->num_clients <= tran_index)
     {
       if (heap_chnguess_realloc () != NO_ERROR)
 	{
 	  csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	  return NULL_CHN;
 	}
     }
@@ -15353,6 +15951,10 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
     }
 
   csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return chn;
 }
@@ -16512,9 +17114,15 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
   int ret = NO_ERROR;
   int alloced_string = 0;
   char *string = NULL;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_OTHERS);
+#endif
 
   if (!attr_info || !scan_cache)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return ER_FAILED;
     }
 
@@ -16580,9 +17188,15 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 		{
 		  if (string != NULL && alloced_string == 1)
 		    {
+#ifdef SERVER_MODE
+		      mmon_sub_stat_with_tracking_tag (strlen (string) + 1);
+#endif
 		      db_private_free_and_init (thread_p, string);
 		    }
 
+#ifdef SERVER_MODE
+		  mmon_sub_stat_with_tracking_tag (strlen (classname) + 1);
+#endif
 		  free_and_init (classname);
 
 		  if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, serial_name, (int) strlen (serial_name),
@@ -16696,11 +17310,18 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
       heap_scancache_end (thread_p, scan_cache);
     }
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return ret;
 
 exit_on_error:
   if (classname != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (strlen (classname) + 1);
+#endif
       free_and_init (classname);
     }
 
@@ -16708,6 +17329,9 @@ exit_on_error:
     {
       heap_scancache_end (thread_p, scan_cache);
     }
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
   return ret;
 }
 
@@ -16892,6 +17516,9 @@ heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid)
   int count, i;
   char *classname;
   bool need_free_classname = false;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_CLASSREPR);
+#endif
 
   if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
     {
@@ -16919,6 +17546,9 @@ heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid)
 	}
 
       fprintf (fp, "\n*** End of dump.\n");
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (OR_CLASSREP *) * count);
+#endif
       free_and_init (rep_all);
     }
 
@@ -16926,8 +17556,14 @@ heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid)
 
   if (need_free_classname)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (strlen (classname) + 1);
+#endif
       free_and_init (classname);
     }
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 }
 
 /*
@@ -17030,6 +17666,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
   ATTR_ID atts_id[1] = { 0 };
   DB_VALUE orig_value;
   TP_DOMAIN_STATUS status;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_OTHERS);
+#endif
 
   db_make_null (&orig_value);
 
@@ -17342,6 +17981,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 
 exit:
   pr_clear_value (&orig_value);
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
   return error;
 }
 
@@ -17399,6 +18041,9 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
 	      error = ER_FAILED;
 	      goto end;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (nr_atts * sizeof (ATTR_ID));
+#endif
 	  atts_free = true;
 	  for (i = 0; i < nr_atts; i++)
 	    {
@@ -17480,6 +18125,9 @@ end:
     }
   if (atts_free && atts)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (nr_atts * sizeof (ATTR_ID));
+#endif
       free_and_init (atts);
     }
   if (unpack_info)
@@ -17540,6 +18188,9 @@ heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 		  error_status = ER_FAILED;
 		  goto error;
 		}
+#ifdef SERVER_MODE
+	      mmon_add_stat (thread_p, MMON_HEAP_ATTRINFO, size);
+#endif
 	      for (j = 0; j < n_indexes; j++)
 		{
 		  fi_preds[j].func_pred = NULL;
@@ -17554,6 +18205,9 @@ heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 		  error_status = ER_FAILED;
 		  goto error;
 		}
+#ifdef SERVER_MODE
+	      mmon_add_stat (thread_p, MMON_HEAP_ATTRINFO, size);
+#endif
 	      for (j = 0; j < n_indexes; j++)
 		{
 		  attr_info_started[j] = 0;
@@ -17575,6 +18229,9 @@ heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 	      error_status = ER_FAILED;
 	      goto error;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat (thread_p, MMON_HEAP_ATTRINFO, size);
+#endif
 
 	  for (j = 0; j < idx->n_atts; j++)
 	    {
@@ -17592,6 +18249,9 @@ heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 
 	  if (att_ids)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, idx->n_atts * sizeof (ATTR_ID));
+#endif
 	      db_private_free_and_init (thread_p, att_ids);
 	    }
 	}
@@ -17599,6 +18259,9 @@ heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 
   if (attr_info_started != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, n_indexes * sizeof (int));
+#endif
       db_private_free_and_init (thread_p, attr_info_started);
     }
 
@@ -17609,11 +18272,17 @@ heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 error:
   if (att_ids)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, idx->n_atts * sizeof (ATTR_ID));
+#endif
       db_private_free_and_init (thread_p, att_ids);
     }
   heap_free_func_pred_unpack_info (thread_p, n_indexes, fi_preds, attr_info_started);
   if (attr_info_started != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, n_indexes * sizeof (int));
+#endif
       db_private_free_and_init (thread_p, attr_info_started);
     }
 
@@ -17658,6 +18327,9 @@ heap_free_func_pred_unpack_info (THREAD_ENTRY * thread_p, int n_indexes, FUNC_PR
 	  free_xasl_unpack_info (thread_p, func_indx_preds[i].unpack_info);
 	}
     }
+#ifdef SERVER_MODE
+  mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, n_indexes * sizeof (FUNC_PRED_UNPACK_INFO));
+#endif
   db_private_free_and_init (thread_p, func_indx_preds);
 }
 
@@ -17702,6 +18374,9 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
       error = er_errid ();
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, sizeof (HEAP_SHOW_SCAN_CTX));
+#endif
   memset (ctx, 0, sizeof (HEAP_SHOW_SCAN_CTX));
 
   status = xlocator_find_class_oid (thread_p, class_name, &class_oid, S_LOCK);
@@ -17729,6 +18404,9 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
 	  error = er_errid ();
 	  goto cleanup;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat (thread_p, MMON_HEAP_OTHERS, parts_count * sizeof (HFID));
+#endif
 
       for (i = 0; i < parts_count; i++)
 	{
@@ -17746,6 +18424,9 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
 	  error = er_errid ();
 	  goto cleanup;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat (thread_p, MMON_HEAP_OTHERS, sizeof (HFID));
+#endif
 
       error = heap_get_class_info (thread_p, &class_oid, &ctx->hfids[0], NULL, NULL);
       if (error != NO_ERROR)
@@ -17770,9 +18451,15 @@ cleanup:
     {
       if (ctx->hfids != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat (thread_p, MMON_HEAP_OTHERS, parts_count * sizeof (HFID));
+#endif
 	  db_private_free (thread_p, ctx->hfids);
 	}
 
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_OTHERS, sizeof (HEAP_SHOW_SCAN_CTX));
+#endif
       db_private_free_and_init (thread_p, ctx);
     }
 
@@ -17851,6 +18538,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (class_name) + 1);
+#endif
 
   /* Class_oid */
   oid_to_string (buf, sizeof (buf), &heap_hdr->class_oid);
@@ -17860,6 +18550,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   /* HFID */
   db_make_int (out_values[idx], hfid_p->vfid.volid);
@@ -17879,6 +18572,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   /* Next_vpid */
   vpid_to_string (buf, sizeof (buf), &heap_hdr->next_vpid);
@@ -17888,6 +18584,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   /* Unfill space */
   db_make_int (out_values[idx], heap_hdr->unfill_space);
@@ -17940,6 +18639,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   db_make_int (out_values[idx], heap_hdr->estimates.num_second_best);
   idx++;
@@ -17979,6 +18681,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   vpid_to_string (buf, sizeof (buf), &heap_hdr->estimates.last_vpid);
   error = db_make_string_copy (out_values[idx], buf);
@@ -17987,6 +18692,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   vpid_to_string (buf, sizeof (buf), &heap_hdr->estimates.full_search_vpid);
   error = db_make_string_copy (out_values[idx], buf);
@@ -17995,6 +18703,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   assert (idx == out_cnt);
 
@@ -18007,6 +18718,9 @@ cleanup:
 
   if (class_name != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_OTHERS, strlen (class_name) + 1);
+#endif
       free_and_init (class_name);
     }
 
@@ -18045,11 +18759,17 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
   int val = 0;
   int idx = 0;
   FILE_DESCRIPTORS fdes;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_OTHERS);
+#endif
 
   ctx = (HEAP_SHOW_SCAN_CTX *) ptr;
 
   if (cursor >= ctx->hfids_count)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return S_END;
     }
 
@@ -18102,6 +18822,9 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (classname) + 1);
+#endif
 
   oid_to_string (class_oid_str, sizeof (class_oid_str), &fdes.heap.class_oid);
   error = db_make_string_copy (out_values[idx], class_oid_str);
@@ -18110,6 +18833,9 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (class_oid_str) + 1);
+#endif
 
   db_make_int (out_values[idx], hfid_p->vfid.volid);
   idx++;
@@ -18172,6 +18898,9 @@ cleanup:
 
   if (classname != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_OTHERS, strlen (classname) + 1);
+#endif
       free_and_init (classname);
     }
 
@@ -18179,6 +18908,10 @@ cleanup:
     {
       heap_attrinfo_end (thread_p, &attr_info);
     }
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return (error == NO_ERROR) ? S_SUCCESS : S_ERROR;
 }
@@ -18204,9 +18937,15 @@ heap_header_capacity_end_scan (THREAD_ENTRY * thread_p, void **ptr)
 
   if (ctx->hfids != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_OTHERS, ctx->hfids_count * sizeof (HFID));
+#endif
       db_private_free (thread_p, ctx->hfids);
     }
 
+#ifdef SERVER_MODE
+  mmon_sub_stat (thread_p, MMON_HEAP_OTHERS, sizeof (HEAP_SHOW_SCAN_CTX));
+#endif
   db_private_free (thread_p, ctx);
   *ptr = NULL;
 
@@ -19473,30 +20212,49 @@ static int
 heap_mark_class_as_modified (THREAD_ENTRY * thread_p, OID * oid_p, int chn, bool decache)
 {
   char *classname = NULL;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_OTHERS);
+#endif
 
   assert (oid_p != NULL);
 
   if (heap_Guesschn == NULL || HFID_IS_NULL (&(heap_Classrepr->rootclass_hfid)))
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       /* nothing to do */
       return NO_ERROR;
     }
 
   if (heap_get_class_name (thread_p, oid_p, &classname) != NO_ERROR || classname == NULL)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       ASSERT_ERROR ();
       return ER_FAILED;
     }
   if (log_add_to_modified_class_list (thread_p, classname, oid_p) != NO_ERROR)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (strlen (classname) + 1);
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       free_and_init (classname);
       return ER_FAILED;
     }
 
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (strlen (classname) + 1);
+#endif
   free_and_init (classname);
 
   if (csect_enter (thread_p, CSECT_HEAP_CHNGUESS, INF_WAIT) != NO_ERROR)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return ER_FAILED;
     }
   heap_Guesschn->schema_change = true;
@@ -19512,6 +20270,9 @@ heap_mark_class_as_modified (THREAD_ENTRY * thread_p, OID * oid_p, int chn, bool
 
   csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
   /* all ok */
   return NO_ERROR;
 }
@@ -23316,6 +24077,12 @@ heap_get_class_info_from_record (THREAD_ENTRY * thread_p, const OID * class_oid,
   if (classname != NULL)
     {
       *classname = strdup (or_class_name (&recdes));
+#ifdef SERVER_MODE
+      if (*classname != NULL)
+	{
+	  mmon_add_stat_with_tracking_tag (strlen (*classname) + 1);
+	}
+#endif
     }
 
   error_code = heap_scancache_end (thread_p, &scan_cache);
@@ -23342,6 +24109,10 @@ heap_hfid_table_entry_alloc (void)
       return NULL;
     }
 
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_HFIDTABLE_HASH, sizeof (HEAP_HFID_TABLE_ENTRY));
+#endif
+
   new_entry->classname = NULL;
 
   return (void *) new_entry;
@@ -23362,10 +24133,16 @@ heap_hfid_table_entry_free (void *entry)
       // Clear the classname.
       if (entry_p->classname != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_HFIDTABLE, strlen (entry_p->classname) + 1);
+#endif
 	  free (entry_p->classname);
 	  entry_p->classname = NULL;
 	}
 
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_HFIDTABLE_HASH, sizeof (HEAP_HFID_TABLE_ENTRY));
+#endif
       free (entry);
       return NO_ERROR;
     }
@@ -23407,6 +24184,9 @@ heap_hfid_table_entry_uninit (void *entry)
   HEAP_HFID_TABLE_ENTRY *entry_p = (HEAP_HFID_TABLE_ENTRY *) entry;
   if (entry_p->classname != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_HFIDTABLE, strlen (entry_p->classname) + 1);
+#endif
       free (entry_p->classname);
       entry_p->classname = NULL;
     }
@@ -23494,9 +24274,15 @@ heap_initialize_hfid_table (void)
 {
   int ret = NO_ERROR;
   LF_ENTRY_DESCRIPTOR *edesc = NULL;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_HFIDTABLE_HASH);
+#endif
 
   if (heap_Hfid_table != NULL)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NO_ERROR;
     }
 
@@ -23521,6 +24307,9 @@ heap_initialize_hfid_table (void)
   ret = lf_freelist_init (&heap_Hfid_table_area.hfid_hash_freelist, 1, 100, edesc, &hfid_table_Ts);
   if (ret != NO_ERROR)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return ret;
     }
 
@@ -23531,12 +24320,19 @@ heap_initialize_hfid_table (void)
   if (ret != NO_ERROR)
     {
       lf_hash_destroy (&heap_Hfid_table_area.hfid_hash);
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return ret;
     }
 
   heap_Hfid_table_area.logging = prm_get_bool_value (PRM_ID_HEAP_INFO_CACHE_LOGGING);
 
   heap_Hfid_table = &heap_Hfid_table_area;
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return ret;
 }
@@ -23549,6 +24345,9 @@ heap_initialize_hfid_table (void)
 void
 heap_finalize_hfid_table (void)
 {
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_HFIDTABLE_HASH);
+#endif
   if (heap_Hfid_table != NULL)
     {
       /* destroy hash and freelist */
@@ -23557,6 +24356,9 @@ heap_finalize_hfid_table (void)
 
       heap_Hfid_table = NULL;
     }
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 }
 
 /*
@@ -23612,6 +24414,9 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto exit;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, max_num_slots * sizeof (VACUUM_HEAP_OBJECT));
+#endif
   worker.heap_objects_capacity = max_num_slots;
   worker.n_heap_objects = 0;
 
@@ -23684,6 +24489,9 @@ exit:
 
   if (worker.heap_objects != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_OTHERS, max_num_slots * sizeof (VACUUM_HEAP_OBJECT));
+#endif
       free_and_init (worker.heap_objects);
     }
   return error_code;
@@ -23708,12 +24516,18 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   HFID hfid_local = HFID_INITIALIZER;
   char *classname_local = NULL;
   int inserted = 0;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_HFIDTABLE);
+#endif
 
   assert (hfid != NULL && !HFID_IS_NULL (hfid));
   assert (ftype == FILE_HEAP || ftype == FILE_HEAP_REUSE_SLOTS);
 
   if (class_oid == NULL || OID_ISNULL (class_oid))
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       /* We can't cache it. */
       return NO_ERROR;
     }
@@ -23722,6 +24536,9 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
     lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, &inserted);
   if (error_code != NO_ERROR)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       assert (false);
       return error_code;
     }
@@ -23734,6 +24551,12 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   if (classname_in != NULL)
     {
       classname_local = strdup (classname_in);
+#ifdef SERVER_MODE
+      if (classname_local != NULL)
+	{
+	  mmon_add_stat_with_tracking_tag (strlen (classname_local) + 1);
+	}
+#endif
     }
   else
     {
@@ -23755,8 +24578,15 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 
 	  if (classname_local != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (strlen (classname_local) + 1);
+#endif
 	      free (classname_local);
 	    }
+
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
 	  return error_code;
 	}
@@ -23767,6 +24597,9 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   char *dummy_null = NULL;
   if (!entry->classname.compare_exchange_strong (dummy_null, classname_local))
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (strlen (classname_local) + 1);
+#endif
       free (classname_local);
     }
 
@@ -23774,6 +24607,10 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 
   heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info hfid=%d|%d|%d, ftype=%s, classname = %s",
 		       HFID_AS_ARGS (hfid), file_type_to_string (ftype), classname_local);
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   /* Successfully cached. */
   return NO_ERROR;
@@ -23799,6 +24636,9 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
   HEAP_HFID_TABLE_ENTRY *entry = NULL;
   char *classname_local = NULL;
   int inserted = 0;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_HFIDTABLE);
+#endif
 
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
@@ -23807,6 +24647,9 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return error_code;
     }
   assert (entry != NULL);
@@ -23826,6 +24669,9 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	  boot_find_root_heap (&entry->hfid);
 	  entry->ftype = FILE_HEAP;
 	  lf_tran_end_with_mb (t_entry);
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	  return NO_ERROR;
 	}
 
@@ -23841,6 +24687,10 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	  // remove entry
 	  lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, NULL);
 
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
 	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
 	  return error_code;
 	}
@@ -23850,6 +24700,9 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 
       if (!entry->classname.compare_exchange_strong (dummy_null, classname_local))
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (classname_local) + 1);
+#endif
 	  // somebody else has set it
 	  free (classname_local);
 	}
@@ -23869,6 +24722,10 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 
 	  // remove entry
 	  lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, NULL);
+
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
 	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
 	  return error_code;
@@ -23891,6 +24748,10 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
     }
 
   lf_tran_end_with_mb (t_entry);
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get hfid=%d|%d|%d, ftype = %s, classname = %s",
 		       HFID_AS_ARGS (&entry->hfid), file_type_to_string (entry->ftype), entry->classname.load ());
@@ -24320,6 +25181,9 @@ heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * sca
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HEAP_SCANCACHE_NODE_LIST));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_SCAN, sizeof (HEAP_SCANCACHE_NODE_LIST));
+#endif
 
   COPY_OID (&new_->node.class_oid, partition_oid);
   HFID_COPY (&new_->node.hfid, &hfid);
@@ -25287,11 +26151,17 @@ heap_scancache_block_allocate (cubmem::block &b, size_t size)
     {
       b.ptr = (char *) db_private_alloc (NULL, size);
       assert (b.ptr != NULL);
+#ifdef SERVER_MODE
+      mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_SCAN, size);
+#endif
     }
   else
     {
       b.ptr = (char *) db_private_realloc (NULL, b.ptr, size);
       assert (b.ptr != NULL);
+#ifdef SERVER_MODE
+      mmon_resize_stat (thread_get_thread_entry_info (), MMON_HEAP_SCAN, b.dim, size);
+#endif
     }
   b.dim = size;
 }
@@ -25299,6 +26169,12 @@ heap_scancache_block_allocate (cubmem::block &b, size_t size)
 static void
 heap_scancache_block_deallocate (cubmem::block &b)
 {
+#ifdef SERVER_MODE
+  if (b.ptr != NULL)
+    {
+      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_SCAN, b.dim);
+    }
+#endif
   db_private_free_and_init (NULL, b.ptr);
   b.dim = 0;
 }
@@ -25318,12 +26194,21 @@ heap_scancache::alloc_area ()
   if (m_area == NULL)
     {
       m_area = new cubmem::single_block_allocator (HEAP_SCANCACHE_BLOCK_ALLOCATOR);
+#ifdef SERVER_MODE
+      mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_SCAN, sizeof (cubmem::single_block_allocator));
+#endif
     }
 }
 
 void
 heap_scancache::end_area ()
 {
+#ifdef SERVER_MODE
+  if (m_area)
+    {
+      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_SCAN, sizeof (cubmem::single_block_allocator));
+    }
+#endif
   delete m_area;
   m_area = NULL;
 }
@@ -25821,6 +26706,13 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
   LOG_DATA_ADDR log_addr = LOG_DATA_ADDR_INITIALIZER;
   char *ptr = log_data;
 
+#ifdef SERVER_MODE
+  if (log_data != NULL)
+    {
+      mmon_add_stat (thread_p, MMON_HEAP_OTHERS, log_data_size + MAX_ALIGNMENT);
+    }
+#endif
+
   // Now populate the log data needed.
 
   // HFID
@@ -25850,6 +26742,9 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 
   if (log_data)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_OTHERS, log_data_size + MAX_ALIGNMENT);
+#endif
       db_private_free_and_init (NULL, log_data);
     }
 }

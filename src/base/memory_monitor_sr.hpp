@@ -30,19 +30,26 @@
 #include <type_traits>
 
 #include "perf_def.hpp"
-#include "thread_compat.hpp"
 #include "memory_monitor_common.h"
+#include "thread_manager.hpp"
 
 #define MMON_PARSE_MASK 0x0000FFFF
 #define MMON_MAKE_STAT_ID(module_idx) ((module_idx) << 16)
 
-typedef enum
+typedef enum mmon_stat_id:int
 {
-  /* TODO: this dummy modules will be changed when heap module is registered */
-  MMON_STAT_DUMMY_1 = MMON_MAKE_STAT_ID (MMON_MODULE_DUMMY),
-  MMON_STAT_DUMMY_2,
-  MMON_STAT_LONG_DUMMY_1 = MMON_MAKE_STAT_ID (MMON_MODULE_LONG_DUMMY),
-  MMON_STAT_LONG_DUMMY_2,
+  MMON_COMMON = MMON_MAKE_STAT_ID (MMON_MODULE_COMMON),
+  MMON_HEAP_SCAN = MMON_MAKE_STAT_ID (MMON_MODULE_HEAP),
+  MMON_HEAP_BESTSPACE,
+  MMON_HEAP_CLASSREPR,
+  MMON_HEAP_CLASSREPR_HASH,
+  MMON_HEAP_ATTRINFO,
+  MMON_HEAP_HFIDTABLE,
+  MMON_HEAP_HFIDTABLE_HASH,
+  MMON_HEAP_CHNGUESS,
+  MMON_HEAP_CHNGUESS_HASH,
+  MMON_HEAP_OTHERS,
+  MMON_OTHERS = MMON_MAKE_STAT_ID (MMON_MODULE_OTHERS),
   MMON_STAT_LAST = MMON_MAKE_STAT_ID (MMON_MODULE_LAST)
 } MMON_STAT_ID;
 
@@ -59,4 +66,9 @@ void mmon_aggregate_module_info (int module_index, std::vector<MMON_MODULE_INFO>
 void mmon_aggregate_module_info_summary (std::vector<MMON_MODULE_INFO> &info);
 void mmon_aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info);
 
+MMON_STAT_ID mmon_set_tracking_tag (MMON_STAT_ID new_tag);
+void mmon_add_stat_with_tracking_tag (int64_t size);
+void mmon_sub_stat_with_tracking_tag (int64_t size);
+void mmon_move_stat_with_tracking_tag (int64_t size, MMON_STAT_ID stat_id, bool tag_is_src);
+void mmon_resize_stat_with_tracking_tag (int64_t old_size, int64_t new_size);
 #endif /* _MEMORY_MONITOR_SR_HPP_ */

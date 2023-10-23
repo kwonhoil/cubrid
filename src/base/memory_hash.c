@@ -56,6 +56,9 @@
 #include "intl_support.h"
 #include "object_primitive.h"
 #include "dbtype.h"
+#if defined (SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* defined (SERVER_MODE) */
 
 #if __WORDSIZE == 32
 #define GET_PTR_FOR_HASH(key) ((unsigned int)(key))
@@ -916,6 +919,9 @@ mht_create (const char *name, int est_size, unsigned int (*hash_func) (const voi
 
       return NULL;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (DB_SIZEOF (MHT_TABLE));
+#endif
 
   /* Initialize the chunky memory manager */
   ht->heap_id = db_create_fixed_heap (DB_SIZEOF (HENTRY), MAX (2, ht_estsize / 2 + 1));
@@ -923,6 +929,9 @@ mht_create (const char *name, int est_size, unsigned int (*hash_func) (const voi
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (HENTRY));
 
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (DB_SIZEOF (MHT_TABLE));
+#endif
       free_and_init (ht);
       return NULL;
     }
@@ -935,9 +944,15 @@ mht_create (const char *name, int est_size, unsigned int (*hash_func) (const voi
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 
       db_destroy_fixed_heap (ht->heap_id);
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (DB_SIZEOF (MHT_TABLE));
+#endif
       free_and_init (ht);
       return NULL;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (size);
+#endif
 
   ht->hash_func = hash_func;
   ht->cmp_func = cmp_func;
@@ -1088,6 +1103,9 @@ mht_rehash (MHT_TABLE * ht)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+#ifdef SERVER_MODE
+  mmon_resize_stat_with_tracking_tag (ht->size * DB_SIZEOF (*hvector), size);
+#endif
 
   /* Initialize all entries */
   memset (new_hvector, 0x00, size);
@@ -1137,12 +1155,17 @@ void
 mht_destroy (MHT_TABLE * ht)
 {
   assert (ht != NULL);
-
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (ht->size * DB_SIZEOF (HENTRY_PTR));
+#endif
   free_and_init (ht->table);
 
   /* release hash table entry storage */
   db_destroy_fixed_heap (ht->heap_id);
 
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (DB_SIZEOF (MHT_TABLE));
+#endif
   free_and_init (ht);
 }
 
