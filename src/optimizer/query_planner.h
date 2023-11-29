@@ -40,6 +40,8 @@ namespace cubxasl
   struct analytic_eval_type;
 }
 
+#define QO_CPU_WEIGHT   0.0025
+
 typedef enum
 {
   QO_PLANTYPE_SCAN,
