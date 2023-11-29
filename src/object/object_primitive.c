@@ -9063,7 +9063,7 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
 	    }
 	  else
 	    {
-	      or_multi_set_null (midx_result.buf, i);
+	      assert (or_multi_is_null (midx_result.buf, i));
 	    }
 
 	  /* update offset */
