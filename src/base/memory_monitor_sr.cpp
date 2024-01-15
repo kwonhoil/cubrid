@@ -174,16 +174,17 @@ namespace cubmem
 
   int memory_monitor::generate_checksum (int tag_id, uint64_t size)
   {
-    //char input[32]; // INT_MAX digits 10 +  ULLONG_MAX digits 20
-    std::string input = std::to_string (tag_id) + std::to_string (size);
+    char input[32]; // INT_MAX digits 10 +  ULLONG_MAX digits 20
+    //std::string input = std::to_string (tag_id) + std::to_string (size);
     unsigned char digest[MD5_DIGEST_LENGTH];
     int ret;
     //memset (input, 0, sizeof (input));
     //memset (digest, 0, sizeof (digest));
-    //sprintf (input, "%10d%20llu", tag_id, size);
+    sprintf (input, "%d%lu", tag_id, size);
     {
       std::lock_guard<std::mutex> lock (m_checksum_mutex);
-      (void) MD5 (reinterpret_cast<const unsigned char *>(input.c_str()), input.length (), digest);
+      (void) MD5 (reinterpret_cast<const unsigned char *>(input), strlen (input), digest);
+      //(void) MD5 (reinterpret_cast<const unsigned char *>(input.c_str()), input.length (), digest);
       memcpy (&ret, digest, sizeof (int));
     }
     return ret;
