@@ -30,10 +30,10 @@ pipeline {
             }
 
             echo 'Building...'
-            sh 'scl enable devtoolset-8 -- /entrypoint.sh build'
+//            sh 'scl enable devtoolset-8 -- /entrypoint.sh build'
 
             echo 'Packing...'
-            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -o ${OUTPUT_DIR}"
+//            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -o ${OUTPUT_DIR}"
 
             // echo 'Testing...'
             // sh '/entrypoint.sh test || echo "$? failed"'
@@ -50,7 +50,7 @@ pipeline {
           post {
             always {
               archiveArtifacts "${OUTPUT_DIR}/*"
-              junit "${TEST_REPORT}/*.xml"
+            //  junit "${TEST_REPORT}/*.xml"
             }
           }
         }
@@ -68,10 +68,10 @@ pipeline {
           }
           steps {
             echo 'Building...'
-            sh 'scl enable devtoolset-8 -- /entrypoint.sh build -m debug'
+//            sh 'scl enable devtoolset-8 -- /entrypoint.sh build -m debug'
             
             echo 'Packing...'
-            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -m debug -o ${OUTPUT_DIR}"
+//            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -m debug -o ${OUTPUT_DIR}"
 
             // echo 'Testing...'
             // sh '/entrypoint.sh test || echo "$? failed"'
@@ -88,7 +88,7 @@ pipeline {
           post {
             always {
               archiveArtifacts "${OUTPUT_DIR}/*"
-              junit "${TEST_REPORT}/*.xml"
+              //junit "${TEST_REPORT}/*.xml"
             }
           }
         }
@@ -128,7 +128,8 @@ pipeline {
       build job: "${DEPLOY_JOB_FOR_MANUAL}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
             propagate: false
 //      emailext replyTo: '$DEFAULT_REPLYTO', to: '$DEFAULT_RECIPIENTS',
-//               subject: '$DEFAULT_SUBJECT', body: '''${JELLY_SCRIPT,template="html"}'''
+      emailext replyTo: '$DEFAULT_REPLYTO', to: 'twkang@cubrid.com',
+               subject: '$DEFAULT_SUBJECT', body: '''${JELLY_SCRIPT,template="html"}'''
     }
   }
 }
