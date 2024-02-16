@@ -90,6 +90,7 @@ cub_calloc (size_t num, size_t size, const char *file, const int line)
       p = malloc (num * size + MMON_ALLOC_META_SIZE);
       if (p != NULL)
 	{
+	  memset (p, 0, num * size + MMON_ALLOC_META_SIZE);
 	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
 	}
     }
