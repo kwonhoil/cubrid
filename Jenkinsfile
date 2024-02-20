@@ -31,22 +31,11 @@ pipeline {
             }
 
             echo 'Building...'
-//            sh 'scl enable devtoolset-8 -- /entrypoint.sh build'
+            sh 'scl enable devtoolset-8 -- /entrypoint.sh build'
 
             echo 'Packing...'
-//            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -o ${OUTPUT_DIR}"
+            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -o ${OUTPUT_DIR}"
 
-<<<<<<< HEAD
-            // echo 'Testing...'
-            // sh '/entrypoint.sh test || echo "$? failed"'
-            script {
-              // Skip testing for feature branches
-              if (!(env.BRANCH_NAME ==~ /^feature\/.*/)) {
-            	echo 'Testing...'
-            	sh '/entrypoint.sh test || echo "$? failed"'
-              } else {
-                echo "Skipping testing for feature branch"
-=======
             script {
               if (env.BRANCH_NAME ==~ /^feature\/.*/) {
                 echo 'Skip testing for feature branch'
@@ -54,20 +43,15 @@ pipeline {
               } else {
             	echo 'Testing...'
             	sh '/entrypoint.sh test || echo "$? failed"'
->>>>>>> 3186fa8b4d1eeeec69b23db8e3888074951723c6
               }
             }
           }
           post {
             always {
               archiveArtifacts "${OUTPUT_DIR}/*"
-<<<<<<< HEAD
-            //  junit "${TEST_REPORT}/*.xml"
-=======
               if (env.JUNIT_REQUIRED) {
                 junit "${TEST_REPORT}/*.xml"
               }
->>>>>>> 3186fa8b4d1eeeec69b23db8e3888074951723c6
             }
           }
         }
@@ -85,22 +69,11 @@ pipeline {
           }
           steps {
             echo 'Building...'
-//            sh 'scl enable devtoolset-8 -- /entrypoint.sh build -m debug'
+            sh 'scl enable devtoolset-8 -- /entrypoint.sh build -m debug'
             
             echo 'Packing...'
-//            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -m debug -o ${OUTPUT_DIR}"
+            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -m debug -o ${OUTPUT_DIR}"
 
-<<<<<<< HEAD
-            // echo 'Testing...'
-            // sh '/entrypoint.sh test || echo "$? failed"'
-            script {
-              // Skip testing for feature branches
-              if (!(env.BRANCH_NAME ==~ /^feature\/.*/)) {
-            	echo 'Testing...'
-            	sh '/entrypoint.sh test || echo "$? failed"'
-              } else {
-                echo "Skipping testing for feature branch"
-=======
             script {
               if (env.BRANCH_NAME ==~ /^feature\/.*/) {
                 echo 'Skip testing for feature branch'
@@ -108,20 +81,15 @@ pipeline {
               } else {
             	echo 'Testing...'
             	sh '/entrypoint.sh test || echo "$? failed"'
->>>>>>> 3186fa8b4d1eeeec69b23db8e3888074951723c6
               }
             }
           }
           post {
             always {
               archiveArtifacts "${OUTPUT_DIR}/*"
-<<<<<<< HEAD
-              //junit "${TEST_REPORT}/*.xml"
-=======
               if (env.JUNIT_REQUIRED) {
                 junit "${TEST_REPORT}/*.xml"
               }
->>>>>>> 3186fa8b4d1eeeec69b23db8e3888074951723c6
             }
           }
         }
@@ -157,13 +125,6 @@ pipeline {
 
   post {
     always {
-<<<<<<< HEAD
-//      build job: "${DEPLOY_JOB}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
-      build job: "${DEPLOY_JOB_FOR_MANUAL}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
-            propagate: false
-//      emailext replyTo: '$DEFAULT_REPLYTO', to: '$DEFAULT_RECIPIENTS',
-      emailext replyTo: '$DEFAULT_REPLYTO', to: 'twkang@cubrid.com',
-=======
       script {
         if (env.BRANCH_NAME ==~ /^feature\/.*/) {
           build job: "${DEPLOY_JOB_FOR_MANUAL}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
@@ -174,7 +135,6 @@ pipeline {
         }
       }
       emailext replyTo: '$DEFAULT_REPLYTO', to: '$DEFAULT_RECIPIENTS',
->>>>>>> 3186fa8b4d1eeeec69b23db8e3888074951723c6
                subject: '$DEFAULT_SUBJECT', body: '''${JELLY_SCRIPT,template="html"}'''
     }
   }
