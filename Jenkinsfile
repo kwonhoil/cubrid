@@ -8,6 +8,7 @@ pipeline {
   environment {
     OUTPUT_DIR = 'packages'
     TEST_REPORT = 'reports'
+    JUNIT_REQUIRED = true
   }
 
   stages {
@@ -35,6 +36,7 @@ pipeline {
             echo 'Packing...'
 //            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -o ${OUTPUT_DIR}"
 
+<<<<<<< HEAD
             // echo 'Testing...'
             // sh '/entrypoint.sh test || echo "$? failed"'
             script {
@@ -44,13 +46,28 @@ pipeline {
             	sh '/entrypoint.sh test || echo "$? failed"'
               } else {
                 echo "Skipping testing for feature branch"
+=======
+            script {
+              if (env.BRANCH_NAME ==~ /^feature\/.*/) {
+                echo 'Skip testing for feature branch'
+                JUNIT_REQUIRED = false
+              } else {
+            	echo 'Testing...'
+            	sh '/entrypoint.sh test || echo "$? failed"'
+>>>>>>> 3186fa8b4d1eeeec69b23db8e3888074951723c6
               }
             }
           }
           post {
             always {
               archiveArtifacts "${OUTPUT_DIR}/*"
+<<<<<<< HEAD
             //  junit "${TEST_REPORT}/*.xml"
+=======
+              if (env.JUNIT_REQUIRED) {
+                junit "${TEST_REPORT}/*.xml"
+              }
+>>>>>>> 3186fa8b4d1eeeec69b23db8e3888074951723c6
             }
           }
         }
@@ -73,6 +90,7 @@ pipeline {
             echo 'Packing...'
 //            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -m debug -o ${OUTPUT_DIR}"
 
+<<<<<<< HEAD
             // echo 'Testing...'
             // sh '/entrypoint.sh test || echo "$? failed"'
             script {
@@ -82,13 +100,28 @@ pipeline {
             	sh '/entrypoint.sh test || echo "$? failed"'
               } else {
                 echo "Skipping testing for feature branch"
+=======
+            script {
+              if (env.BRANCH_NAME ==~ /^feature\/.*/) {
+                echo 'Skip testing for feature branch'
+                JUNIT_REQUIRED = false
+              } else {
+            	echo 'Testing...'
+            	sh '/entrypoint.sh test || echo "$? failed"'
+>>>>>>> 3186fa8b4d1eeeec69b23db8e3888074951723c6
               }
             }
           }
           post {
             always {
               archiveArtifacts "${OUTPUT_DIR}/*"
+<<<<<<< HEAD
               //junit "${TEST_REPORT}/*.xml"
+=======
+              if (env.JUNIT_REQUIRED) {
+                junit "${TEST_REPORT}/*.xml"
+              }
+>>>>>>> 3186fa8b4d1eeeec69b23db8e3888074951723c6
             }
           }
         }
@@ -124,11 +157,24 @@ pipeline {
 
   post {
     always {
+<<<<<<< HEAD
 //      build job: "${DEPLOY_JOB}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
       build job: "${DEPLOY_JOB_FOR_MANUAL}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
             propagate: false
 //      emailext replyTo: '$DEFAULT_REPLYTO', to: '$DEFAULT_RECIPIENTS',
       emailext replyTo: '$DEFAULT_REPLYTO', to: 'twkang@cubrid.com',
+=======
+      script {
+        if (env.BRANCH_NAME ==~ /^feature\/.*/) {
+          build job: "${DEPLOY_JOB_FOR_MANUAL}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
+                propagate: false
+        } else {
+          build job: "${DEPLOY_JOB}", parameters: [string(name: 'PROJECT_NAME', value: "${JOB_NAME}")],
+                propagate: false
+        }
+      }
+      emailext replyTo: '$DEFAULT_REPLYTO', to: '$DEFAULT_RECIPIENTS',
+>>>>>>> 3186fa8b4d1eeeec69b23db8e3888074951723c6
                subject: '$DEFAULT_SUBJECT', body: '''${JELLY_SCRIPT,template="html"}'''
     }
   }
