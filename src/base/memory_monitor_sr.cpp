@@ -89,7 +89,7 @@ namespace cubmem
 
     if (pos != std::string::npos)
       {
-        filecopy = filecopy.substr (pos);
+	filecopy = filecopy.substr (pos);
       }
 
     ret = filecopy + ':' + std::to_string (line);
@@ -124,7 +124,7 @@ namespace cubmem
 
     tag_name = make_tag_name (file, line);
 
-    std::unique_lock<std::mutex> tag_map_lock (m_tag_map_mutex);
+    //std::unique_lock<std::mutex> tag_map_lock (m_tag_map_mutex);
     if (auto search = m_tag_map.find (tag_name); search != m_tag_map.end ())
       {
 	metainfo.tag_id = search->second;
@@ -134,11 +134,11 @@ namespace cubmem
       {
 	metainfo.tag_id = m_tag_map.size ();
 	// tag is start with 0
-        std::pair <std::string, int> tag_map_entry (tag_name, metainfo.tag_id);
-        m_tag_map.insert (tag_map_entry);
+	std::pair <std::string, int> tag_map_entry (tag_name, metainfo.tag_id);
+	m_tag_map.insert (tag_map_entry);
 	m_stat_map.insert (std::make_pair (metainfo.tag_id, metainfo.size));
       }
-    tag_map_lock.unlock ();
+    //tag_map_lock.unlock ();
 
     // put meta info into the alloced chunk
     meta_ptr = ptr + metainfo.size - MMON_ALLOC_META_SIZE;
@@ -160,21 +160,21 @@ namespace cubmem
 
     if (alloc_size > MMON_ALLOC_META_SIZE)
       {
-        meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
+	meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
 
-        memcpy (&metainfo, meta_ptr, sizeof (MMON_METAINFO));
+	memcpy (&metainfo, meta_ptr, sizeof (MMON_METAINFO));
 
-        if (metainfo.checksum == generate_checksum (metainfo.tag_id, metainfo.size))
-          {
-            assert ((metainfo.tag_id >= 0 && metainfo.tag_id <= m_stat_map.size()));
-            assert (m_stat_map[metainfo.tag_id] >= metainfo.size);
+	if (metainfo.checksum == generate_checksum (metainfo.tag_id, metainfo.size))
+	  {
+	    assert ((metainfo.tag_id >= 0 && metainfo.tag_id <= m_stat_map.size()));
+	    assert (m_stat_map[metainfo.tag_id] >= metainfo.size);
 
-            m_total_mem_usage -= metainfo.size;
-            m_stat_map[metainfo.tag_id] -= metainfo.size;
+	    m_total_mem_usage -= metainfo.size;
+	    m_stat_map[metainfo.tag_id] -= metainfo.size;
 
-            memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
-            m_meta_alloc_count--;
-          }
+	    memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
+	    m_meta_alloc_count--;
+	  }
       }
   }
 
