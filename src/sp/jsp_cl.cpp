@@ -998,8 +998,6 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       code_info.otype = compile_response.compiled_type;
       code_info.ocode = compile_response.compiled_code;
       code_info.owner = sp_info.owner;
-      code_info.itype = 0; // dummy;
-      code_info.icode = compile_response.translated_code;
 
       err = sp_add_stored_procedure_code (code_info);
       if (err != NO_ERROR)
@@ -1431,6 +1429,15 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 	{
 	  goto error;
 	}
+    }
+
+  /* before deleting an object, all permissions are revoked. */
+  sp_mop->drop_object_statement = 1;
+  err = au_object_revoke_all_privileges (NULL, sp_mop);
+  if (err != NO_ERROR)
+    {
+      sp_mop->drop_object_statement = 0;
+      goto error;
     }
 
   err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PROCEDURE, name);
