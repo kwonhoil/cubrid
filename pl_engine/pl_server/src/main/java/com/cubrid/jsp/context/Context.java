@@ -139,7 +139,7 @@ public class Context {
     public void checkTranId(int tid) {
         if (tranactionId == -1) {
             tranactionId = tid;
-            classLoader = new ContextClassLoader();
+            oldClassLoader = new ContextClassLoader();
         } else if (tranactionId != tid) {
             // re-cretae dynamic class loader
             if (oldClassLoader != null
