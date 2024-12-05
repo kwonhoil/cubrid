@@ -122,7 +122,8 @@ typedef enum
 {
   PL_SERVER_RUNNING = 0,
   PL_SERVER_STOPPED,
-  PL_SERVER_STATUS_ERROR
+  PL_SERVER_STATUS_ERROR,
+  PL_SERVER_STARTING
 } UTIL_PL_SERVER_STATUS_E;
 
 typedef struct
@@ -273,7 +274,7 @@ static int process_gateway (int command_type, int argc, const char **argv, bool 
 static int process_manager (int command_type, bool process_window_service);
 static int process_pl (int command_type, int argc, const char **argv, bool show_usage, bool suppress_message,
 		       bool process_window_service, bool ha_mode);
-static int process_pl_stop (const char *db_name, bool suppress_message, bool process_window_service);
+static int process_pl_restart (const char *db_name, bool suppress_message, bool process_window_service);
 static int process_pl_status (const char *db_name, bool suppress_message);
 static int process_heartbeat (int command_type, int argc, const char **argv);
 static int process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv);
@@ -1362,8 +1363,6 @@ process_service (int command_type, bool process_window_service)
 	{
 	  if (!are_all_services_stopped (0, process_window_service))
 	    {
-	      (void) process_pl (command_type, 0, NULL, false, true, process_window_service, false);
-
 	      if (strcmp (get_property (SERVICE_START_SERVER), PROPERTY_ON) == 0
 		  && us_Property_map[SERVER_START_LIST].property_value != NULL
 		  && us_Property_map[SERVER_START_LIST].property_value[0] != '\0')
@@ -2804,10 +2803,15 @@ is_pl_running (const char *server_name)
       pclose (input);
       return PL_SERVER_RUNNING;
     }
-  else if (strcmp (buf, "NO_CONNECTION") == 0)
+  else if (strcmp (buf, "NO_PROCESS") == 0)
     {
       pclose (input);
       return PL_SERVER_STOPPED;
+    }
+  else if (strcmp (buf, "NO_CONNECTION") == 0)
+    {
+      pclose (input);
+      return PL_SERVER_STARTING;
     }
   else
     {
@@ -2820,15 +2824,24 @@ static int
 process_pl_restart (const char *db_name, bool suppress_message, bool process_window_service)
 {
   int status = NO_ERROR;
-  static const int wait_timeout = 5;
+  static const int wait_timeout = 10;
   int waited_secs = 0;
 
   if (!suppress_message)
     {
       print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_3S, PRINT_PL_NAME, PRINT_CMD_RESTART, db_name);
     }
-  UTIL_PL_SERVER_STATUS_E pl_status = is_pl_running (db_name);
-  if (pl_status == PL_SERVER_RUNNING)
+
+  if (!is_server_running (CHECK_SERVER, db_name, 0))
+    {
+      status = ER_GENERIC_ERROR;
+      if (!suppress_message)
+	{
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
+	}
+    }
+
+  if (status == NO_ERROR)
     {
       if (process_window_service)
 	{
@@ -2844,32 +2857,34 @@ process_pl_restart (const char *db_name, bool suppress_message, bool process_win
 	{
 	  const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STOP, db_name, NULL };
 	  status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
-	  do
-	    {
-	      status = (is_pl_running (db_name) == PL_SERVER_RUNNING) ? ER_GENERIC_ERROR : NO_ERROR;
-	      sleep (1);	/* wait to stop */
-	      waited_secs++;
-	    }
-	  while (status != NO_ERROR && waited_secs < wait_timeout);
+	  sleep (1);
 	}
-    }
-  else
-    {
-      status = ER_GENERIC_ERROR;
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
+
+      UTIL_PL_SERVER_STATUS_E pl_status;
+      do
+	{
+	  // The pl server needs a few seconds to accept ping request
+	  pl_status = is_pl_running (db_name);
+	  status = (pl_status == PL_SERVER_RUNNING) ? NO_ERROR : ER_GENERIC_ERROR;
+	  sleep (1);		// wait to stop
+
+	  if (!is_server_running (CHECK_SERVER, db_name, 0))
+	    {
+	      status = ER_GENERIC_ERROR;
+	      if (!suppress_message)
+		{
+		  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
+		}
+	      break;
+	    }
+
+	  waited_secs++;
+	}
+      while (status != NO_ERROR && waited_secs < wait_timeout);
     }
 
   if (!suppress_message)
     {
-      if (status == ER_GENERIC_ERROR)
-	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
-	}
-      else
-	{
-	  print_message (stdout, MSGCAT_UTIL_GENERIC_ALREADY_RUNNING_2S, PRINT_PL_NAME, db_name);
-	}
-
       print_result (PRINT_PL_NAME, status, RESTART);
     }
 
@@ -2880,15 +2895,44 @@ static int
 process_pl_status (const char *db_name)
 {
   int status = NO_ERROR;
-  UTIL_PL_SERVER_STATUS_E pl_status = is_pl_running (db_name);
-  if (pl_status == PL_SERVER_RUNNING)
+
+  static const int wait_timeout = 10;
+  int waited_secs = 0;
+  UTIL_PL_SERVER_STATUS_E pl_status;
+
+  do
     {
-      const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STATUS, db_name, NULL };
-      status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
+      if (!is_server_running (CHECK_SERVER, db_name, 0))
+	{
+	  status = ER_GENERIC_ERROR;
+	  print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_SERVER_NAME, db_name);
+	  return status;
+	}
+
+
+      pl_status = is_pl_running (db_name);
+      if (pl_status == PL_SERVER_RUNNING)
+	{
+	  const char *args[] = { UTIL_PL_NAME, COMMAND_TYPE_STATUS, db_name, NULL };
+	  status = proc_execute (UTIL_PL_NAME, args, true, false, false, NULL);
+	  if (status == NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+      else
+	{
+	  status = ER_GENERIC_ERROR;
+	}
+
+      // retry
+      sleep (1);
+      waited_secs++;
     }
-  else
+  while (status != NO_ERROR && waited_secs < wait_timeout);
+
+  if (status != NO_ERROR)
     {
-      status = ER_GENERIC_ERROR;
       print_message (stdout, MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
       util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_RUNNING_2S, PRINT_PL_NAME, db_name);
     }
@@ -3897,9 +3941,6 @@ us_hb_deactivate (const char *hostname, bool immediate_stop)
       args[opt_idx++] = COMMDB_HB_DEACT_IMMEDIATELY;
     }
 
-  /* stop pl server */
-  (void) process_pl (STOP, 0, NULL, false, true, false, true);
-
   /* stop all HA processes including cub_server */
   args[opt_idx] = COMMDB_HA_DEACT_STOP_ALL;
   status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
@@ -3947,9 +3988,6 @@ us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
   int status = NO_ERROR;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_STOP);
-
-  /* stop pl server */
-  (void) process_pl (STOP, 1, (const char **) &db_name, false, true, false, true);
 
   status = us_hb_copylogdb_stop (ha_conf, db_name, NULL, NULL);
   if (status != NO_ERROR)
